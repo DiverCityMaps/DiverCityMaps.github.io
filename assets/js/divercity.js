@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <strong>Origin:</strong> ${origin} <br>
                 <strong>Destination:</strong> ${destination} <br>
                 <hr style="margin: 5px 0;">
-                <strong>#NSP:</strong> ${NSP_count} <br>
+                <strong>#NSR:</strong> ${NSP_count} <br>
                 <strong>Spatial Spread:</strong> ${spatialSpread.toFixed(2)} <br>
                 <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">
                     DiverCity: ${diverCityScore.toFixed(2)}
@@ -98,10 +98,10 @@ document.addEventListener('DOMContentLoaded', function() {
             div.innerHTML = `
                 <strong>Legend</strong>
                 <div class="legend-item">
-                    <span class="legend-line" style="background: darkblue;"></span> NSP (Near Shortest Path)
+                    <span class="legend-line" style="background: darkblue;"></span> NSR (Near Shortest Route)
                 </div>
                 <div class="legend-item">
-                    <span class="legend-line" style="background: red;"></span> Non-NSP
+                    <span class="legend-line" style="background: red;"></span> Non-NSR
                 </div>
             `;
 
