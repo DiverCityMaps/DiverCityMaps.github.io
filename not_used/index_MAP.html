@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DiverCity</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <link rel="stylesheet" href="css_trip_planner.css"/>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script type="text/javascript" src="./heap.js"></script>
+    <script src="data/road_networks/roads_data.js"></script>
+    <script src="divercity.js"></script>
+    
+    
+</head>
+<body>
+    <div id="map" class="full-screen-map"></div>
+
+   
+    <script>
+        var map = L.map('map', {
+            center: [0, 0],  // Set initial center
+            zoom: 2,         // Initial zoom level
+            zoomSnap: 0.25,  // Smaller zoom increments
+            zoomDelta: 0.5,  // Finer zoom control
+            maxZoom: 22,     // Allows deeper zoom
+            minZoom: 1,      // Allows further zooming out
+            layers: []
+        });
+
+
+
+        let selectedNodes = []; // Stores selected nodes for shortest path
+        let pathLayers = []; // Store path visualization layers
+        let nodeMarkers = []; // Store node markers
+        let nodes = {}; // Store node coordinates for selection
+
+        // Default values
+        let k = 5;
+        let p = 0.1;
+        let epsilon = 0.3;
+
+
+        console.log("Sample Road Properties:", RoadsData.features.find(f => f.geometry.type === "LineString")?.properties);
+
+
+        function buildGraph() {
+            let graph = {};
+            RoadsData.features.forEach(feature => {
+                if (feature.geometry.type === "LineString") {
+                    let start = feature.properties.start;
+                    let end = feature.properties.end;
+                    feature.properties.tmp_travel_time = feature.properties.travel_time;
+
+                    if (!graph[start]) graph[start] = [];
+
+                    // Only add the edge in one direction (start → end)
+                    graph[start].push({ node: end, weight: feature.properties.tmp_travel_time, feature: feature });
+                } else if (feature.geometry.type === "Point") {
+                    nodes[feature.properties.id] = feature.geometry.coordinates;
+                }
+            });
+            return graph;
+            }
+
+
+
+            
+
+        let graph = buildGraph();
+
+        let edgeLayer = L.geoJSON(RoadsData, {
+            style: function (feature) {
+                return { color: "grey", weight: 0.5 };
+            },
+            filter: function(feature) {
+                return feature.geometry.type === "LineString";
+            }
+        }).addTo(map);
+        
+        function findClosestNode(latlng) {
+            let minDist = Infinity;
+            let closestNode = null;
+            
+            for (let nodeId in nodes) {
+                let nodeCoords = nodes[nodeId];
+                let dist = Math.sqrt(Math.pow(nodeCoords[1] - latlng.lat, 2) + Math.pow(nodeCoords[0] - latlng.lng, 2));
+                
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestNode = nodeId;
+                }
+            }
+            return closestNode;
+        }
+
+        function highlightNodes() {
+            nodeMarkers.forEach(marker => map.removeLayer(marker));
+            nodeMarkers = [];
+            
+            selectedNodes.forEach((nodeId, index) => {
+                let color = index === 0 ? "green" : "red"; // Start: Green, End: Red
+                let marker = L.circleMarker([nodes[nodeId][1], nodes[nodeId][0]], {
+                    radius: 8,
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.8
+                }).addTo(map);
+                nodeMarkers.push(marker);
+            });
+        }
+
+        
+
+       
+
+
+        // Create the info box dynamically and position it just below the zoom controls
+        var infoBox = L.DomUtil.create("div", "info-box");
+        infoBox.innerHTML = "<strong>Route Info</strong><br>Select two nodes to see details.";
+        document.body.appendChild(infoBox);
+
+
+
+        // Function to update the info box when selecting nodes
+        function updateInfoBox(origin, destination, NSP_count, spatialSpread, diverCityScore) {
+            infoBox.innerHTML = `
+                <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
+                <strong>Origin:</strong> ${origin} <br>
+                <strong>Destination:</strong> ${destination} <br>
+                <hr style="margin: 5px 0;">
+                <strong>#NSP:</strong> ${NSP_count} <br>
+                <strong>Spatial Spread:</strong> ${spatialSpread.toFixed(2)} <br>
+                <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">
+                    DiverCity: ${diverCityScore.toFixed(2)}
+                </div>
+            `;
+        }
+
+        function updateInfoBoxDefault() {
+            infoBox.innerHTML = `
+                <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
+                Select two nodes to see details.
+            `;
+        }
+
+
+        map.on('click', function(event) {
+
+            if (selectedNodes.length === 0) {
+                pathLayers.forEach(layer => map.removeLayer(layer));
+                pathLayers = [];
+                nodeMarkers.forEach(marker => map.removeLayer(marker));
+                nodeMarkers = [];
+
+                // Reset the info box to default message
+                updateInfoBoxDefault();
+
+            }
+
+            let closestNode = findClosestNode(event.latlng);
+            if (closestNode) {
+                selectedNodes.push(closestNode);
+                highlightNodes();
+                console.log("Selected Node:", closestNode);
+            }
+
+            if (selectedNodes.length === 2) {
+                let { allPaths, pathCosts } = computeKAlternativePaths(selectedNodes[0], selectedNodes[1], k, p);
+
+
+                drawPathsNSPAggr(map, allPaths, pathCosts, epsilon)
+
+
+                // Convert paths to edge weights
+                let edgeWeights = {};
+                RoadsData.features.forEach(feature => {
+                    if (feature.geometry.type === "LineString") {
+                        let edge = [feature.properties.start, feature.properties.end];
+                        edgeWeights[edge] = feature.properties.length;
+                    }
+                });
+
+                 // Compute DiverCity metrics
+                let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
+
+                // Update the info box with results
+                updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
+
+                selectedNodes = [];
+            }
+        });
+
+
+
+        map.fitBounds(edgeLayer.getBounds());
+        // Force zoom after fitBounds
+
+
+        // Create a legend control and add it to the bottom-right of the map
+        var legend = L.control({ position: "bottomright" });
+
+        legend.onAdd = function (map) {
+            let div = L.DomUtil.create("div", "legend-box");
+
+            div.innerHTML = `
+                <strong>Legend</strong>
+                <div class="legend-item">
+                    <span class="legend-line" style="background: darkblue;"></span> NSP (Near Shortest Path)
+                </div>
+                <div class="legend-item">
+                    <span class="legend-line" style="background: red;"></span> Non-NSP
+                </div>
+            `;
+
+            return div;
+        };
+
+        legend.addTo(map);
+
+        // Add styles for the legend
+        var legendCSS = document.createElement("style");
+        legendCSS.innerHTML = `
+            .legend-box {
+                background: rgba(255, 255, 255, 0.9);
+                border-radius: 8px;
+                padding: 6px 10px; /* Smaller padding */
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+                font-family: Arial, sans-serif;
+                font-size: 12px; /* Smaller text */
+                color: #333;
+                line-height: 16px;
+            }
+            .legend-item {
+                display: flex;
+                align-items: center;
+                margin-top: 3px;
+            }
+            .legend-line {
+                width: 25px; /* Slightly smaller width */
+                height: 4px;  /* Thinner line */
+                margin-right: 6px;
+                display: inline-block;
+                border-radius: 2px;
+            }
+        `;
+        document.head.appendChild(legendCSS);
+
+
+    </script>
+</body>
+</html>
