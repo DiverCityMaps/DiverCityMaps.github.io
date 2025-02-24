@@ -21,6 +21,13 @@ document.addEventListener('DOMContentLoaded', function() {
         layers: []
     });
 
+    // OSM Layer (standard layer)
+    const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    });
+
+
+
     // Build the graph and nodes from RoadsData (which must be defined globally)
     let { graph, nodes } = buildGraph(RoadsData);
 
@@ -32,6 +39,23 @@ document.addEventListener('DOMContentLoaded', function() {
             return feature.geometry.type === "LineString";
         }
     }).addTo(map);
+
+
+    // Add OSM layer to the map, but keep it deselected initially
+    let baseLayers = {
+        "Roads Data": edgeLayer,  // Roads data will be selected by default
+        "OSM": osmLayer           // OSM layer will be available but deselected
+    };
+
+    // Overlay layers (you can add other layers like your graph data or edge layers)
+    let overlayLayers = {};
+
+    // Create the layer control and add it to the map
+    L.control.layers(baseLayers, overlayLayers, {collapsed: false}).addTo(map);
+
+    // Initially, add Roads Data to the map
+    edgeLayer.addTo(map);
+
 
     function findClosestNode(latlng) {
         let minDist = Infinity;
@@ -51,10 +75,11 @@ document.addEventListener('DOMContentLoaded', function() {
     nodeMarkers.forEach(marker => map.removeLayer(marker));
     nodeMarkers = [];
 
+    // Add the destination marker first (in case of multiple selections)
     selectedNodes.forEach((nodeId, index) => {
         let color = index === 0 ? "green" : "red";
-
-        // Use L.marker with a custom divIcon for circular appearance
+        
+        // Create a marker for the destination node (after the origin node)
         let marker = L.marker([nodes[nodeId][1], nodes[nodeId][0]], {
             draggable: true,  // Enable dragging
             icon: L.divIcon({
@@ -71,20 +96,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 iconAnchor: [10, 10]  // Center the icon
             })
         }).addTo(map);
-
         nodeMarkers.push(marker);
 
         // Add a listener for when the marker is dragged
         marker.on('dragend', function (e) {
-
             let closestNode = findClosestNode(e.target.getLatLng());
-
             selectedNodes[index] = closestNode;
 
-            console.log(selectedNodes)
-
-
-            // Trigger the recalculation of the routes
+            // Trigger the recalculation of the routes after dragging
             if (selectedNodes.length === 2) {
                 let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it=max_it);
                 drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
@@ -101,9 +120,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
                 updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
             }
-            });
         });
-    }
+    });
+}
+
+
+
+
+
+
 
 
 
@@ -259,27 +284,28 @@ document.addEventListener('DOMContentLoaded', function() {
         document.head.appendChild(legendCSS);
 
     map.on('click', function(event) {
+    // Reset if a route was computed previously
+    if (isRouteComputed) {
+        selectedNodes = [];
+        pathLayers.forEach(layer => map.removeLayer(layer));
+        pathLayers = [];
+        nodeMarkers.forEach(marker => map.removeLayer(marker));
+        nodeMarkers = [];
+        updateInfoBoxDefault();
+        isRouteComputed = false;
+    }
 
-        // If a route has been computed before, reset the selected nodes when clicking to select a new origin
-        if (isRouteComputed) {
-            selectedNodes = [];  // Reset selected nodes for new selection
-            pathLayers.forEach(layer => map.removeLayer(layer));
-            pathLayers = [];
-            nodeMarkers.forEach(marker => map.removeLayer(marker));
-            nodeMarkers = [];
-            updateInfoBoxDefault();
-            isRouteComputed = false; // Reset the flag
-        }
+    let closestNode = findClosestNode(event.latlng);
+    if (closestNode) {
+        selectedNodes.push(closestNode);
+        highlightNodes();
+        console.log("node selected, it should be updated");
+    }
 
-
-        let closestNode = findClosestNode(event.latlng);
-        if (closestNode) {
-            selectedNodes.push(closestNode);
-            highlightNodes();
-        }
-
-        if (selectedNodes.length === 2) {
-            let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it=max_it);
+    if (selectedNodes.length === 2) {
+        // Use setTimeout to allow the marker to be rendered immediately
+        setTimeout(() => {
+            let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it);
             drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
 
             // Convert paths to edge weights
@@ -291,16 +317,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
-            
             // Compute DiverCity metrics
             let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
-
-            // Update the info box with results
             updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
-            //selectedNodes = [];
             isRouteComputed = true;
-        }
-    });
+        }, 0);
+    }
+});
+
 
 
 
