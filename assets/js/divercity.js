@@ -3,7 +3,7 @@ var map = []
 let selectedNodes = [];
 let pathLayers = [];
 let nodeMarkers = [];
-let nodes = []
+let nodes = [];
 
 let k = 5, p = 0.1, epsilon = 0.3;
 let max_it = 100;
@@ -232,7 +232,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (selectedNodes.length === 2) {
             let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it=max_it);
-            drawPathsNSPAggr(map, nodes, allPaths, pathCosts, epsilon);
+            drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
 
             // Convert paths to edge weights
             let edgeWeights = {};
@@ -272,7 +272,12 @@ function buildGraph(roadsData) {
       if (!graph[start]) {
         graph[start] = [];
       }
-      graph[start].push({ node: end, weight: feature.properties.tmp_travel_time, feature });
+      graph[start].push({
+        node: end,
+        weight: feature.properties.tmp_travel_time,
+        geometry: feature.geometry.coordinates,
+        feature });
+
     } else if (feature.geometry.type === "Point") {
       nodes[feature.properties.id] = feature.geometry.coordinates;
     }
@@ -506,94 +511,99 @@ function computeKAlternativePaths(graph, startNode, endNode, k, p, max_it=50) {
 /* Path-drawing functions */
 
  function drawPathsNSP(map, allPaths, pathCosts, epsilon) {
-            // Remove existing path layers
-            pathLayers.forEach(layer => map.removeLayer(layer));
-            pathLayers = [];
+    // Remove existing path layers
+    pathLayers.forEach(layer => map.removeLayer(layer));
+    pathLayers = [];
 
-            // Define path categories and corresponding styles
-            const pathCategories = [
-                { paths: filterNoNearShortest(allPaths, pathCosts, epsilon), color: "red", weight: 3 },  // NON-NSP
-                { paths: filterNearShortest(allPaths, pathCosts, epsilon), color: "darkblue", weight: 5 }      // NSP
-            ];
+    // Define path categories and corresponding styles
+    const pathCategories = [
+        { paths: filterNoNearShortest(allPaths, pathCosts, epsilon), color: "red", weight: 3 },  // NON-NSP
+        { paths: filterNearShortest(allPaths, pathCosts, epsilon), color: "darkblue", weight: 5 }      // NSP
+    ];
 
-            // Log path counts
-            pathCategories.forEach(({ paths }) => console.log(paths.length));
+    // Log path counts
+    pathCategories.forEach(({ paths }) => console.log(paths.length));
 
-            // Loop over each category and draw paths
-            pathCategories.forEach(({ paths, color, weight }) => {
-                paths.forEach(pathEdges => {
-                    let geoJsonFeatures = pathEdges.map(([start, end]) => ({
+    // Loop over each category and draw paths
+    pathCategories.forEach(({ paths, color, weight }) => {
+        paths.forEach(pathEdges => {
+            let geoJsonFeatures = pathEdges.map(([start, end]) => ({
+                type: "Feature",
+                geometry: {
+                    type: "LineString",
+                    coordinates: [nodes[start], nodes[end]]
+                },
+                properties: {}
+            }));
+
+            let layer = L.geoJSON(geoJsonFeatures, { style: { color, weight } }).addTo(map);
+            pathLayers.push(layer);
+        });
+    });
+}
+
+
+function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
+    // Remove existing path layers
+    pathLayers.forEach(layer => map.removeLayer(layer));
+    pathLayers = [];
+
+    // Define path categories
+    const pathCategories = [
+        { paths: filterNoNearShortest(allPaths, pathCosts, epsilon), color: "red" }, // NON-NSP
+        { paths: filterNearShortest(allPaths, pathCosts, epsilon), color: "darkblue"}  // NSP
+        ];
+
+    // Object to count edge occurrences
+    let edgeCounts = {};
+
+    // Count how many times each edge appears in paths
+    pathCategories.forEach(({ paths }) => {
+        paths.forEach(pathEdges => {
+            pathEdges.forEach(([start, end]) => {
+                let key = start < end ? `${start}-${end}` : `${end}-${start}`; // Keep order consistent
+                edgeCounts[key] = (edgeCounts[key] || 0) + 1;
+            });
+        });
+    });
+
+    // Normalize edge counts to determine weight scaling
+    let maxCount = Math.max(...Object.values(edgeCounts), 1); // Avoid division by zero
+
+    // Draw aggregated paths
+    pathCategories.forEach(({ paths, color }) => {
+        let geoJsonFeatures = [];
+
+        paths.forEach(pathEdges => {
+            pathEdges.forEach(([start, end]) => {
+                let key = start < end ? `${start}-${end}` : `${end}-${start}`; // Keep order consistent
+                let weight = 1 + (edgeCounts[key] / maxCount) * 8; // Scale weight dynamically
+
+                // Get the full geometry for the edge
+                let edgeGeometry = graph[start].find(link => link.node === end)?.geometry;
+
+                if (edgeGeometry){
+                    geoJsonFeatures.push({
                         type: "Feature",
                         geometry: {
                             type: "LineString",
-                            coordinates: [nodes[start], nodes[end]]
+                            coordinates: edgeGeometry  // Use the full geometry
                         },
-                        properties: {}
-                    }));
-
-                    let layer = L.geoJSON(geoJsonFeatures, { style: { color, weight } }).addTo(map);
-                    pathLayers.push(layer);
-                });
+                        properties: { weight }
+                    });}
             });
-        }
+        });
 
-        function drawPathsNSPAggr(map, nodes, allPaths, pathCosts, epsilon) {
-            // Remove existing path layers
-            pathLayers.forEach(layer => map.removeLayer(layer));
-            pathLayers = [];
+        let layer = L.geoJSON(geoJsonFeatures, {
+            style: feature => ({
+                color: color,
+                weight: feature.properties.weight
+            })
+        }).addTo(map);
 
-            // Define path categories
-            const pathCategories = [
-                { paths: filterNoNearShortest(allPaths, pathCosts, epsilon), color: "red" }, // NON-NSP
-                { paths: filterNearShortest(allPaths, pathCosts, epsilon), color: "darkblue"}  // NSP
-                ];
-
-            // Object to count edge occurrences
-            let edgeCounts = {};
-
-            // Count how many times each edge appears in paths
-            pathCategories.forEach(({ paths }) => {
-                paths.forEach(pathEdges => {
-                    pathEdges.forEach(([start, end]) => {
-                        let key = start < end ? `${start}-${end}` : `${end}-${start}`; // Keep order consistent
-                        edgeCounts[key] = (edgeCounts[key] || 0) + 1;
-                    });
-                });
-            });
-
-            // Normalize edge counts to determine weight scaling
-            let maxCount = Math.max(...Object.values(edgeCounts), 1); // Avoid division by zero
-
-            // Draw aggregated paths
-            pathCategories.forEach(({ paths, color }) => {
-                let geoJsonFeatures = [];
-
-                paths.forEach(pathEdges => {
-                    pathEdges.forEach(([start, end]) => {
-                        let key = start < end ? `${start}-${end}` : `${end}-${start}`; // Keep order consistent
-                        let weight = 1 + (edgeCounts[key] / maxCount) * 8; // Scale weight dynamically
-
-                        geoJsonFeatures.push({
-                            type: "Feature",
-                            geometry: {
-                                type: "LineString",
-                                coordinates: [nodes[start], nodes[end]] // Convert node IDs to coordinates
-                            },
-                            properties: { weight }
-                        });
-                    });
-                });
-
-                let layer = L.geoJSON(geoJsonFeatures, {
-                    style: feature => ({
-                        color: color,
-                        weight: feature.properties.weight
-                    })
-                }).addTo(map);
-
-                pathLayers.push(layer);
-            });
-        }
+        pathLayers.push(layer);
+    });
+}
 
 
 
