@@ -6,6 +6,7 @@ let nodeMarkers = [];
 let nodes = []
 
 let k = 5, p = 0.1, epsilon = 0.3;
+let max_it = 100;
 
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -89,6 +90,80 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
         }
 
+
+        // Create sliders container with a toggleable section and tooltips
+    var sliderContainer = L.DomUtil.create("div", "slider-container");
+    sliderContainer.innerHTML = `
+        <div class="slider-header" id="slider-toggle">
+            Adjust Parameters
+        </div>
+        <div class="slider-content" id="slider-content" style="display: none;">
+            <label class="tooltip" for="slider-k">
+                k: <span id="value-k">${k}</span>
+                <span class="tooltiptext">Number of alternative routes</span>
+            </label>
+            <input type="range" id="slider-k" min="1" max="10" step="1" value="${k}">
+            <br>
+            
+            <label class="tooltip" for="slider-p">
+                p: <span id="value-p">${p}</span>
+                <span class="tooltiptext">The penalty factor for the Path Penalization algorithm</span>
+            </label>
+            <input type="range" id="slider-p" min="0" max="1" step="0.01" value="${p}">
+            <br>
+            
+            <label class="tooltip" for="slider-eps">
+                ε (epsilon): <span id="value-eps">${epsilon}</span>
+                <span class="tooltiptext">The cost threshold for near-shortest routes</span>
+            </label>
+            <input type="range" id="slider-eps" min="0" max="1" step="0.01" value="${epsilon}">
+            <br>
+            
+            <label class="tooltip" for="slider-max-it">
+                Max Iterations: <span id="value-max-it">${max_it}</span>
+                <span class="tooltiptext">Limit on pathfinding attempts</span>
+            </label>
+            <input type="range" id="slider-max-it" min="10" max="300" step="10" value="${max_it}">
+            <br>
+        </div>
+    `;
+    document.body.appendChild(sliderContainer);
+
+
+        // Toggle the visibility of the slider content
+        document.getElementById("slider-toggle").addEventListener("click", function() {
+            var sliderContent = document.getElementById("slider-content");
+            if (sliderContent.style.display === "none") {
+                sliderContent.style.display = "block";
+            } else {
+                sliderContent.style.display = "none";
+            }
+        });
+
+        // Event listeners for sliders
+        document.getElementById("slider-k").addEventListener("input", function() {
+            k = parseInt(this.value);
+            document.getElementById("value-k").innerText = k;
+        });
+
+        document.getElementById("slider-p").addEventListener("input", function() {
+            p = parseFloat(this.value);
+            document.getElementById("value-p").innerText = p.toFixed(2);
+        });
+
+        document.getElementById("slider-eps").addEventListener("input", function() {
+            epsilon = parseFloat(this.value);
+            document.getElementById("value-eps").innerText = epsilon.toFixed(2);
+        });
+
+        document.getElementById("slider-max-it").addEventListener("input", function() {
+            max_it = parseInt(this.value);
+            document.getElementById("value-max-it").innerText = max_it;
+        });
+
+
+
+
         // Create a legend control and add it to the bottom-right of the map
         var legend = L.control({ position: "bottomright" });
 
@@ -156,7 +231,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         if (selectedNodes.length === 2) {
-            let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it=100);
+            let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it=max_it);
             drawPathsNSPAggr(map, nodes, allPaths, pathCosts, epsilon);
 
             // Convert paths to edge weights
@@ -372,7 +447,7 @@ function logDiverCity(paths, costList, edgeWeights) {
 function computeKAlternativePaths(graph, startNode, endNode, k, p, max_it=50) {
      let allPaths = new Set();
       let pathCosts = [];
-      let tempGraph = deepCopyGraph(graph);  // Assuming you have a function to deep copy the graph
+      let tempGraph = deepCopyGraph(graph);
       let iterations = 0;
 
     while (allPaths.size < k && iterations < max_it) {
@@ -451,7 +526,7 @@ function computeKAlternativePaths(graph, startNode, endNode, k, p, max_it=50) {
                         type: "Feature",
                         geometry: {
                             type: "LineString",
-                            coordinates: [nodes[start], nodes[end]] // Convert node IDs to coordinates
+                            coordinates: [nodes[start], nodes[end]]
                         },
                         properties: {}
                     }));

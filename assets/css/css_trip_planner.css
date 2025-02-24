@@ -1,3 +1,14 @@
+
+/* Full-Screen Map */
+.full-screen-map {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    height: calc(100vh - 1.5em);
+}
+
+
 #settings-panel {
     position: absolute;
     top: 10px;
@@ -57,38 +68,115 @@
     z-index: 1000; /* Ensure it stays on top */
 }
 
-/* Styles for Legend */
-.legend-box {
+/* Slider Container (aligned with Info Box style) */
+.slider-container {
+    position: absolute;
+    top: 100px; /* Positioned below the Info Box */
+    right: 10px;
+    padding: 10px 15px;
     background: rgba(255, 255, 255, 0.9);
-    border-radius: 8px;
-    padding: 6px 10px; /* Smaller padding */
+    border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     font-family: Arial, sans-serif;
-    font-size: 12px; /* Smaller text */
+    font-size: 14px;
     color: #333;
-    line-height: 16px;
+    min-width: 180px;
+    max-width: 250px;
+    z-index: 1000;
+    overflow: visible;
+    transition: max-height 0.3s ease;
 }
 
-.legend-item {
-    display: flex;
-    align-items: center;
-    margin-top: 3px;
+/* Collapsible Header */
+.slider-header {
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    text-align: center;
+    background: #f7f7f7;
+    border-radius: 8px;
+    padding: 5px;
+    user-select: none;
+    color: #333;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.1);
 }
 
-.legend-line {
-    width: 25px; /* Slightly smaller width */
-    height: 4px;  /* Thinner line */
-    margin-right: 6px;
-    display: inline-block;
-    border-radius: 2px;
+/* Collapsible Content */
+.slider-content {
+    display: block;
+    max-height: 230px;
+    overflow: visible;
+    padding-top: 10px;
+    transition: max-height 0.3s ease;
 }
 
+/* Collapsed state */
+.slider-container.collapsed .slider-content {
+    display: none;
+    max-height: 0;
+    overflow: hidden;
+}
 
-/* Full-Screen Map */
-.full-screen-map {
-    top: 0;
-    left: 0;
+/* Label styling */
+.slider-container label {
+    display: block;
+    margin-top: 5px;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+/* Slider input styling */
+.slider-container input[type="range"] {
     width: 100%;
-    height: 100vh;
-    height: calc(100vh - 1.5em);
+    margin-top: 3px;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+
+
+/* Tooltip Container */
+.tooltip {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  color: #333;
+}
+
+/* Tooltip Text */
+.tooltip .tooltiptext {
+  visibility: hidden;
+  width: 220px;
+  background-color: #333;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 8px;
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 105%;  /* Position to the left */
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Tooltip Arrow */
+.tooltip .tooltiptext::after {
+  content: "";
+  position: absolute;
+  top: 50%; /* At the bottom of the tooltip */
+  left: 100%;
+  margin-top: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #333 transparent transparent transparent;
+  transform: rotate(270deg);
+}
+
+/* Show Tooltip on Hover */
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+  opacity: 1;
 }
