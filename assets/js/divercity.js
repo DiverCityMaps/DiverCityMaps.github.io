@@ -139,19 +139,38 @@ document.addEventListener('DOMContentLoaded', function() {
     document.body.appendChild(infoBox);
 
     // Function to update the info box when selecting nodes
-        function updateInfoBox(origin, destination, NSP_count, spatialSpread, diverCityScore) {
-            infoBox.innerHTML = `
-                <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
-                <strong>Origin:</strong> ${origin} <br>
-                <strong>Destination:</strong> ${destination} <br>
-                <hr style="margin: 5px 0;">
-                <strong>#NSR:</strong> ${NSP_count} <br>
-                <strong>Spatial Spread:</strong> ${spatialSpread.toFixed(2)} <br>
-                <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">
-                    DiverCity: ${diverCityScore.toFixed(2)}
-                </div>
-            `;
-        }
+      function updateInfoBox(origin, destination, NSP_count, spatialSpread, diverCityScore) {
+        // Get coordinates from nodes (remembering nodes[nodeId] = [lng, lat])
+        let originCoords = nodes[origin];
+        let destinationCoords = nodes[destination];
+        
+        // Convert to lat, lng order
+        let originLat = originCoords[1];
+        let originLng = originCoords[0];
+        let destinationLat = destinationCoords[1];
+        let destinationLng = destinationCoords[0];
+        
+        // Compute the straight-line distance in km
+        let distance = haversineDistance(originLat, originLng, destinationLat, destinationLng);
+        
+        infoBox.innerHTML = `
+            <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
+            <strong>Origin:</strong> ${origin} <br>
+            <strong>Destination:</strong> ${destination} <br>
+            <strong>OD Distance:</strong> ${distance.toFixed(2)} km <br>
+            <hr style="margin: 5px 0;">
+            <strong>#NSR:</strong> ${NSP_count} <br>
+            <strong>Spatial Spread:</strong> ${spatialSpread.toFixed(2)} <br>
+            <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">
+                DiverCity: ${diverCityScore.toFixed(2)}
+            </div>
+        `;
+    }
+
+
+
+
+
 
         function updateInfoBoxDefault() {
             infoBox.innerHTML = `
@@ -299,7 +318,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (closestNode) {
         selectedNodes.push(closestNode);
         highlightNodes();
-        console.log("node selected, it should be updated");
     }
 
     if (selectedNodes.length === 2) {
@@ -740,4 +758,17 @@ function deepCopyGraph(graph) {
     }));
   }
   return copy;
+}
+
+
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the Earth in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
