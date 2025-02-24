@@ -3,7 +3,7 @@ var map = []
 let selectedNodes = [];
 let pathLayers = [];
 let nodeMarkers = [];
-let nodes = [];
+let isRouteComputed = false; // Flag to track if a route has been computed
 
 let k = 5, p = 0.1, epsilon = 0.3;
 let max_it = 100;
@@ -48,19 +48,64 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function highlightNodes() {
-        nodeMarkers.forEach(marker => map.removeLayer(marker));
-        nodeMarkers = [];
-        selectedNodes.forEach((nodeId, index) => {
-            let color = index === 0 ? "green" : "red";
-            let marker = L.circleMarker([nodes[nodeId][1], nodes[nodeId][0]], {
-                radius: 8,
-                color: color,
-                fillColor: color,
-                fillOpacity: 0.8
-            }).addTo(map);
-            nodeMarkers.push(marker);
+    nodeMarkers.forEach(marker => map.removeLayer(marker));
+    nodeMarkers = [];
+
+    selectedNodes.forEach((nodeId, index) => {
+        let color = index === 0 ? "green" : "red";
+
+        // Use L.marker with a custom divIcon for circular appearance
+        let marker = L.marker([nodes[nodeId][1], nodes[nodeId][0]], {
+            draggable: true,  // Enable dragging
+            icon: L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="
+                    background-color: ${color};
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 50%;
+                    border: 2px solid white;
+                    box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                </div>`,
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]  // Center the icon
+            })
+        }).addTo(map);
+
+        nodeMarkers.push(marker);
+
+        // Add a listener for when the marker is dragged
+        marker.on('dragend', function (e) {
+
+            let closestNode = findClosestNode(e.target.getLatLng());
+
+            selectedNodes[index] = closestNode;
+
+            console.log(selectedNodes)
+
+
+            // Trigger the recalculation of the routes
+            if (selectedNodes.length === 2) {
+                let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it=max_it);
+                drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
+
+                // Compute DiverCity metrics
+                let edgeWeights = {};
+                RoadsData.features.forEach(feature => {
+                    if (feature.geometry.type === "LineString") {
+                        let edge = [feature.properties.start, feature.properties.end];
+                        edgeWeights[edge] = feature.properties.length;
+                    }
+                });
+
+                let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
+                updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
+            }
+            });
         });
     }
+
+
 
 
     // Create the info box dynamically and position it just below the zoom controls
@@ -214,15 +259,18 @@ document.addEventListener('DOMContentLoaded', function() {
         document.head.appendChild(legendCSS);
 
     map.on('click', function(event) {
-        if (selectedNodes.length === 0) {
+
+        // If a route has been computed before, reset the selected nodes when clicking to select a new origin
+        if (isRouteComputed) {
+            selectedNodes = [];  // Reset selected nodes for new selection
             pathLayers.forEach(layer => map.removeLayer(layer));
             pathLayers = [];
             nodeMarkers.forEach(marker => map.removeLayer(marker));
             nodeMarkers = [];
-
-            // Reset the info box to default message
             updateInfoBoxDefault();
+            isRouteComputed = false; // Reset the flag
         }
+
 
         let closestNode = findClosestNode(event.latlng);
         if (closestNode) {
@@ -249,7 +297,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Update the info box with results
             updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
-            selectedNodes = [];
+            //selectedNodes = [];
+            isRouteComputed = true;
         }
     });
 
