@@ -64,7 +64,7 @@
     font-size: 14px;
     color: #333;
     min-width: 180px;
-    max-width: 250px;
+    max-width: 300px;
     z-index: 1000; /* Ensure it stays on top */
 }
 

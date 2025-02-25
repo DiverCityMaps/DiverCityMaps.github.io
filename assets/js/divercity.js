@@ -33,8 +33,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     let edgeLayer = L.geoJSON(RoadsData, {
         style: function (feature) {
+        if (feature.properties.is_attractor === 1) {
+            return { color: "orange", weight: 5 };
+        } else {
             return { color: "grey", weight: 0.5 };
-        },
+        }
+    },
         filter: function(feature) {
             return feature.geometry.type === "LineString";
         }
@@ -135,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Create the info box dynamically and position it just below the zoom controls
     var infoBox = L.DomUtil.create("div", "info-box");
-    infoBox.innerHTML = "<strong>Route Info</strong><br>Select two nodes to see details.";
+    infoBox.innerHTML = "<strong>Route Info</strong><br>Click to select origin and destination.";
     document.body.appendChild(infoBox);
 
     // Function to update the info box when selecting nodes
@@ -175,7 +179,7 @@ document.addEventListener('DOMContentLoaded', function() {
         function updateInfoBoxDefault() {
             infoBox.innerHTML = `
                 <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
-                Select two nodes to see details.
+                 Click to select origin and destination.
             `;
         }
 
@@ -184,7 +188,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var sliderContainer = L.DomUtil.create("div", "slider-container");
     sliderContainer.innerHTML = `
         <div class="slider-header" id="slider-toggle">
-            Adjust Parameters
+            Route Settings
         </div>
         <div class="slider-content" id="slider-content" style="display: none;">
             <label class="tooltip" for="slider-k">
@@ -266,6 +270,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="legend-item">
                     <span class="legend-line" style="background: red;"></span> Non-NSR
+                </div>
+                <div class="legend-item">
+                    <span class="legend-line" style="background: orange;"></span> attractor road
                 </div>
             `;
 
@@ -365,7 +372,8 @@ function buildGraph(roadsData) {
       }
       graph[start].push({
         node: end,
-        weight: feature.properties.tmp_travel_time,
+        weight: feature.properties.travel_time,
+        is_attractor: feature.properties.is_attractor,
         geometry: feature.geometry.coordinates,
         feature });
 
