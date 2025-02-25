@@ -1,17 +1,33 @@
+// ==========================
+// Global Variables
+// ==========================
+let map, graph = {}, nodes = {}, edgeLayer, layerControl;
+let selectedNodes = [], nodeMarkers = [], pathLayers = [];
+let isRouteComputed = false;
+let k = 5, p = 0.1, epsilon = 0.3, max_it = 100;
 
-var map = []
-let selectedNodes = [];
-let pathLayers = [];
-let nodeMarkers = [];
-let isRouteComputed = false; // Flag to track if a route has been computed
+// Initialize overlayLayers as an empty object
+let overlayLayers = {};
 
-let k = 5, p = 0.1, epsilon = 0.3;
-let max_it = 100;
-
+const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+});
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the map
-    var map = L.map('map', {
+    if (!map) {
+        initializeMap();
+    }
+});
+
+
+// ==========================
+// Initialization Functions
+
+
+// ==========================
+
+function initializeMap() {
+    map = L.map('map', {
         center: [0, 0],
         zoom: 2,
         zoomSnap: 0.25,
@@ -21,306 +37,142 @@ document.addEventListener('DOMContentLoaded', function() {
         layers: []
     });
 
-    // OSM Layer (standard layer)
-    const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    });
+    initializeLayers();
+    initializeControls();
+    initializeEventListeners();
+    map.fitBounds(edgeLayer.getBounds());
+}
 
+function initializeLayers() {
+    let bgraph = buildGraph(RoadsData);
+    graph = bgraph.graph;
+    nodes = bgraph.nodes;
 
-
-    // Build the graph and nodes from RoadsData (which must be defined globally)
-    let { graph, nodes } = buildGraph(RoadsData);
-
-    let edgeLayer = L.geoJSON(RoadsData, {
-        style: function (feature) {
-        if (feature.properties.is_attractor === 1) {
-            return { color: "orange", weight: 5 };
-        } else {
-            return { color: "grey", weight: 0.5 };
-        }
-    },
-        filter: function(feature) {
-            return feature.geometry.type === "LineString";
-        }
+    edgeLayer = L.geoJSON(RoadsData, {
+        style: styleRoads,
+        filter: filterLineString
     }).addTo(map);
 
-
-    // Add OSM layer to the map, but keep it deselected initially
     let baseLayers = {
-        "Roads Data": edgeLayer,  // Roads data will be selected by default
-        "OSM": osmLayer           // OSM layer will be available but deselected
+        "Roads Data": edgeLayer,
+        "OSM": osmLayer
     };
 
-    // Overlay layers (you can add other layers like your graph data or edge layers)
-    let overlayLayers = {};
+    // Ensure overlayLayers is defined and used correctly
+    overlayLayers = {};  // Initialize or clear existing layers
 
-    // Create the layer control and add it to the map
-    L.control.layers(baseLayers, overlayLayers, {collapsed: false}).addTo(map);
-
-    // Initially, add Roads Data to the map
-    edgeLayer.addTo(map);
-
-
-    function findClosestNode(latlng) {
-        let minDist = Infinity;
-        let closestNode = null;
-        for (let nodeId in nodes) {
-            let nodeCoords = nodes[nodeId];
-            let dist = Math.sqrt(Math.pow(nodeCoords[1] - latlng.lat, 2) + Math.pow(nodeCoords[0] - latlng.lng, 2));
-            if (dist < minDist) {
-                minDist = dist;
-                closestNode = nodeId;
-            }
-        }
-        return closestNode;
-    }
-
-    function highlightNodes() {
-    nodeMarkers.forEach(marker => map.removeLayer(marker));
-    nodeMarkers = [];
-
-    // Add the destination marker first (in case of multiple selections)
-    selectedNodes.forEach((nodeId, index) => {
-        let color = index === 0 ? "green" : "red";
-        
-        // Create a marker for the destination node (after the origin node)
-        let marker = L.marker([nodes[nodeId][1], nodes[nodeId][0]], {
-            draggable: true,  // Enable dragging
-            icon: L.divIcon({
-                className: 'custom-marker',
-                html: `<div style="
-                    background-color: ${color};
-                    width: 16px;
-                    height: 16px;
-                    border-radius: 50%;
-                    border: 2px solid white;
-                    box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                </div>`,
-                iconSize: [20, 20],
-                iconAnchor: [10, 10]  // Center the icon
-            })
-        }).addTo(map);
-        nodeMarkers.push(marker);
-
-        // Add a listener for when the marker is dragged
-        marker.on('dragend', function (e) {
-            let closestNode = findClosestNode(e.target.getLatLng());
-            selectedNodes[index] = closestNode;
-
-            // Trigger the recalculation of the routes after dragging
-            if (selectedNodes.length === 2) {
-                let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it=max_it);
-                drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
-
-                // Compute DiverCity metrics
-                let edgeWeights = {};
-                RoadsData.features.forEach(feature => {
-                    if (feature.geometry.type === "LineString") {
-                        let edge = [feature.properties.start, feature.properties.end];
-                        edgeWeights[edge] = feature.properties.length;
-                    }
-                });
-
-                let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
-                updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
-            }
-        });
-    });
+    layerControl = L.control.layers(baseLayers, overlayLayers, {collapsed: false}).addTo(map);
 }
 
 
+function initializeControls() {
+    //addDrawControl();
+    createInfoBox();
+    createSliders();
+    addLegend();
+}
 
+function initializeEventListeners() {
+    map.on('draw:created', handleAreaSelection);
+    map.on('click', handleMapClick);
+}
 
+// ==========================
+// Graph & Network Functions
+// ==========================
 
+function buildGraph(roadsData) {
+    let graph = {}, nodes = {};
 
+    roadsData.features.forEach(feature => {
+        if (feature.geometry.type === "LineString") {
+            let start = feature.properties.start;
+            let end = feature.properties.end;
 
-
-
-
-    // Create the info box dynamically and position it just below the zoom controls
-    var infoBox = L.DomUtil.create("div", "info-box");
-    infoBox.innerHTML = "<strong>Route Info</strong><br>Click to select origin and destination.";
-    document.body.appendChild(infoBox);
-
-    // Function to update the info box when selecting nodes
-      function updateInfoBox(origin, destination, NSP_count, spatialSpread, diverCityScore) {
-        // Get coordinates from nodes (remembering nodes[nodeId] = [lng, lat])
-        let originCoords = nodes[origin];
-        let destinationCoords = nodes[destination];
-        
-        // Convert to lat, lng order
-        let originLat = originCoords[1];
-        let originLng = originCoords[0];
-        let destinationLat = destinationCoords[1];
-        let destinationLng = destinationCoords[0];
-        
-        // Compute the straight-line distance in km
-        let distance = haversineDistance(originLat, originLng, destinationLat, destinationLng);
-        
-        infoBox.innerHTML = `
-            <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
-            <strong>Origin:</strong> ${origin} <br>
-            <strong>Destination:</strong> ${destination} <br>
-            <strong>OD Distance:</strong> ${distance.toFixed(2)} km <br>
-            <hr style="margin: 5px 0;">
-            <strong>#NSR:</strong> ${NSP_count} <br>
-            <strong>Spatial Spread:</strong> ${spatialSpread.toFixed(2)} <br>
-            <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">
-                DiverCity: ${diverCityScore.toFixed(2)}
-            </div>
-        `;
-    }
-
-
-
-
-
-
-        function updateInfoBoxDefault() {
-            infoBox.innerHTML = `
-                <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
-                 Click to select origin and destination.
-            `;
+            if (!graph[start]) graph[start] = [];
+            graph[start].push({
+                node: end,
+                weight: feature.properties.travel_time,
+                is_attractor: feature.properties.is_attractor,
+                geometry: feature.geometry.coordinates,
+                feature
+            });
+        } else if (feature.geometry.type === "Point") {
+            nodes[feature.properties.id] = feature.geometry.coordinates;
         }
+    });
+    return { graph, nodes };
+}
+
+function initializeGraphNetwork(RoadsData) {
+    let updatedGraph = buildGraph(RoadsData);
+    graph = updatedGraph.graph;
+    nodes = updatedGraph.nodes;
+
+    graph = cleanGraph(graph, nodes);
 
 
-        // Create sliders container with a toggleable section and tooltips
-    var sliderContainer = L.DomUtil.create("div", "slider-container");
-    sliderContainer.innerHTML = `
-        <div class="slider-header" id="slider-toggle">
-            Route Settings
-        </div>
-        <div class="slider-content" id="slider-content" style="display: none;">
-            <label class="tooltip" for="slider-k">
-                k: <span id="value-k">${k}</span>
-                <span class="tooltiptext">Number of alternative routes</span>
-            </label>
-            <input type="range" id="slider-k" min="1" max="10" step="1" value="${k}">
-            <br>
-            
-            <label class="tooltip" for="slider-p">
-                p: <span id="value-p">${p}</span>
-                <span class="tooltiptext">The penalty factor for the Path Penalization algorithm</span>
-            </label>
-            <input type="range" id="slider-p" min="0" max="1" step="0.01" value="${p}">
-            <br>
-            
-            <label class="tooltip" for="slider-eps">
-                ε (epsilon): <span id="value-eps">${epsilon}</span>
-                <span class="tooltiptext">The cost threshold for near-shortest routes</span>
-            </label>
-            <input type="range" id="slider-eps" min="0" max="1" step="0.01" value="${epsilon}">
-            <br>
-            
-            <label class="tooltip" for="slider-max-it">
-                Max Iterations: <span id="value-max-it">${max_it}</span>
-                <span class="tooltiptext">Limit on pathfinding attempts</span>
-            </label>
-            <input type="range" id="slider-max-it" min="10" max="300" step="10" value="${max_it}">
-            <br>
-        </div>
-    `;
-    document.body.appendChild(sliderContainer);
+    if (edgeLayer) map.removeLayer(edgeLayer);
+
+    edgeLayer = L.geoJSON(RoadsData, {
+        style: styleRoads,
+        filter: filterLineString
+    }).addTo(map);
+
+    // Ensure overlayLayers is defined before using it
+    overlayLayers = {};
+
+    updateLayerControl();
+    map.fitBounds(edgeLayer.getBounds());
+}
 
 
-        // Toggle the visibility of the slider content
-        document.getElementById("slider-toggle").addEventListener("click", function() {
-            var sliderContent = document.getElementById("slider-content");
-            if (sliderContent.style.display === "none") {
-                sliderContent.style.display = "block";
-            } else {
-                sliderContent.style.display = "none";
-            }
-        });
+// ==========================
+// Map Styling & Layer Filters
+// ==========================
 
-        // Event listeners for sliders
-        document.getElementById("slider-k").addEventListener("input", function() {
-            k = parseInt(this.value);
-            document.getElementById("value-k").innerText = k;
-        });
+function styleRoads(feature) {
+    return feature.properties.is_attractor === 1
+        ? { color: "orange", weight: 5 }
+        : { color: "grey", weight: 0.5 };
+}
 
-        document.getElementById("slider-p").addEventListener("input", function() {
-            p = parseFloat(this.value);
-            document.getElementById("value-p").innerText = p.toFixed(2);
-        });
+function filterLineString(feature) {
+    return feature.geometry.type === "LineString";
+}
 
-        document.getElementById("slider-eps").addEventListener("input", function() {
-            epsilon = parseFloat(this.value);
-            document.getElementById("value-eps").innerText = epsilon.toFixed(2);
-        });
+function updateLayerControl() {
+    if (layerControl) map.removeControl(layerControl);
 
-        document.getElementById("slider-max-it").addEventListener("input", function() {
-            max_it = parseInt(this.value);
-            document.getElementById("value-max-it").innerText = max_it;
-        });
+    let baseLayers = {
+        "Roads Data": edgeLayer,
+        "OSM": osmLayer
+    };
+    let overlayLayers = {};
+    layerControl = L.control.layers(baseLayers, overlayLayers, {collapsed: false}).addTo(map);
+}
 
 
+// ==========================
+// Event Handlers
+// ==========================
 
+function handleAreaSelection(event) {
+    var layer = event.layer;
+    var bounds = layer.getBounds();
+    var bbox = `${bounds.getSouthWest().lat},${bounds.getSouthWest().lng},${bounds.getNorthEast().lat},${bounds.getNorthEast().lng}`;
 
-        // Create a legend control and add it to the bottom-right of the map
-        var legend = L.control({ position: "bottomright" });
-
-        legend.onAdd = function (map) {
-            let div = L.DomUtil.create("div", "legend-box");
-
-            div.innerHTML = `
-                <strong>Legend</strong>
-                <div class="legend-item">
-                    <span class="legend-line" style="background: darkblue;"></span> NSR (Near Shortest Route)
-                </div>
-                <div class="legend-item">
-                    <span class="legend-line" style="background: red;"></span> Non-NSR
-                </div>
-                <div class="legend-item">
-                    <span class="legend-line" style="background: orange;"></span> attractor road
-                </div>
-            `;
-
-            return div;
-        };
-
-        legend.addTo(map);
-
-        // Add styles for the legend
-        var legendCSS = document.createElement("style");
-        legendCSS.innerHTML = `
-            .legend-box {
-                background: rgba(255, 255, 255, 0.9);
-                border-radius: 8px;
-                padding: 6px 10px; /* Smaller padding */
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-                font-family: Arial, sans-serif;
-                font-size: 12px; /* Smaller text */
-                color: #333;
-                line-height: 16px;
-            }
-            .legend-item {
-                display: flex;
-                align-items: center;
-                margin-top: 3px;
-            }
-            .legend-line {
-                width: 25px; /* Slightly smaller width */
-                height: 4px;  /* Thinner line */
-                margin-right: 6px;
-                display: inline-block;
-                border-radius: 2px;
-            }
-        `;
-        document.head.appendChild(legendCSS);
-
-    map.on('click', function(event) {
-    // Reset if a route was computed previously
-    if (isRouteComputed) {
+    selectedNodes = [];
+    queryOSMData(bbox).then(data => {
+        RoadsData = buildRoadsData(data);
+        initializeGraphNetwork(RoadsData);
         selectedNodes = [];
-        pathLayers.forEach(layer => map.removeLayer(layer));
-        pathLayers = [];
-        nodeMarkers.forEach(marker => map.removeLayer(marker));
-        nodeMarkers = [];
-        updateInfoBoxDefault();
-        isRouteComputed = false;
-    }
+        highlightNodes();
+    }).catch(error => console.error('Error fetching OSM data:', error));
+}
 
+function handleMapClick(event) {
+    if (isRouteComputed) resetRoute();
     let closestNode = findClosestNode(event.latlng);
     if (closestNode) {
         selectedNodes.push(closestNode);
@@ -328,141 +180,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (selectedNodes.length === 2) {
-        // Use setTimeout to allow the marker to be rendered immediately
-        setTimeout(() => {
-            let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it);
-            drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
-
-            // Convert paths to edge weights
-            let edgeWeights = {};
-            RoadsData.features.forEach(feature => {
-                if (feature.geometry.type === "LineString") {
-                    let edge = [feature.properties.start, feature.properties.end];
-                    edgeWeights[edge] = feature.properties.length;
-                }
-            });
-
-            // Compute DiverCity metrics
-            let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
-            updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
-            isRouteComputed = true;
-        }, 0);
+        setTimeout(() => computeAndDrawPaths(), 0);
     }
-});
-
-
-
-
-    map.fitBounds(edgeLayer.getBounds());
-});
-
-
-function buildGraph(roadsData) {
-  let graph = {};
-  let nodes = {};  // Declare nodes locally
-
-  roadsData.features.forEach(feature => {
-    if (feature.geometry.type === "LineString") {
-      let start = feature.properties.start;
-      let end = feature.properties.end;
-      feature.properties.tmp_travel_time = feature.properties.travel_time;
-
-      if (!graph[start]) {
-        graph[start] = [];
-      }
-      graph[start].push({
-        node: end,
-        weight: feature.properties.travel_time,
-        is_attractor: feature.properties.is_attractor,
-        geometry: feature.geometry.coordinates,
-        feature });
-
-    } else if (feature.geometry.type === "Point") {
-      nodes[feature.properties.id] = feature.geometry.coordinates;
-    }
-  });
-
-  return { graph, nodes };
 }
-
 
 
 
 // Filtering Functions
-function filterNearShortest(pathList, costList, eps) {
-    if (pathList.length === 0 || costList.length === 0) return [];
-    let minCost = Math.min(...costList);
-    let maxCost = minCost * (1 + eps);
-    return pathList.filter((_, index) => costList[index] <= maxCost);
-}
-
-function filterNoNearShortest(pathList, costList, eps) {
-    if (pathList.length === 0 || costList.length === 0) return [];
-    let minCost = Math.min(...costList);
-    let maxCost = minCost * (1 + eps);
-    return pathList.filter((_, index) => costList[index] > maxCost);
-}
-
-function weightedJaccardSimilarity(list1, list2, edgeWeights) {
-    let set1 = new Set(list1.map(edge => edge.join(',')));
-    let set2 = new Set(list2.map(edge => edge.join(',')));
-
-    let intersection = [...set1].filter(x => set2.has(x));
-    let union = new Set([...set1, ...set2]);
-
-    let intersectionWeight = intersection.reduce((sum, edge) => sum + (edgeWeights[edge] || 0), 0);
-    let unionWeight = [...union].reduce((sum, edge) => sum + (edgeWeights[edge] || 0), 0);
-
-    return unionWeight > 0 ? intersectionWeight / unionWeight : 0;
-}
-
-function jaccardPairwiseWeighted(pathList, edgeWeights) {
-    let jaccardScores = [];
-    let n = pathList.length;
-
-    if (n <= 1) return [1];
-
-    for (let i = 0; i < n; i++) {
-        let pathA = pathList[i];
-        for (let j = i + 1; j < n; j++) {
-            let pathB = pathList[j];
-            let jacc = weightedJaccardSimilarity(pathA, pathB, edgeWeights);
-            jaccardScores.push(jacc);
-        }
-    }
-
-    return jaccardScores;
-}
-
-function computeDiverCity(paths, costList, edgeWeights, eps = 0.3) {
-    let NSP = filterNearShortest(paths, costList, eps);
-    let numNSP = NSP.length;
-
-    if (numNSP === 0) {
-        return { diverCity: 0, numNSP: 0, spatialSpread: 0 };
-    }
-
-    let jaccardScores = jaccardPairwiseWeighted(NSP, edgeWeights);
-    let avgJaccard = jaccardScores.length > 0 
-        ? jaccardScores.reduce((sum, val) => sum + val, 0) / jaccardScores.length 
-        : 1;
-
-    let spatialSpread = 1 - avgJaccard;
-    let diverCity = numNSP * spatialSpread;
-
-    return { diverCity, numNSP, spatialSpread };
-}
-
-function logDiverCity(paths, costList, edgeWeights) {
-    let formattedEdgeWeights = {};
-    Object.keys(edgeWeights).forEach(edge => {
-        let key = edge.split(',').map(Number).join(',');
-        formattedEdgeWeights[key] = edgeWeights[edge];
-    });
-
-    let divercityScore = computeDiverCity(paths, costList, formattedEdgeWeights);
-    console.log("DiverCity Score:", divercityScore);
-}
 
 
 function filterNearShortest(pathList, costList, eps) {
@@ -609,38 +333,6 @@ function computeKAlternativePaths(graph, startNode, endNode, k, p, max_it=50) {
 
 /* Path-drawing functions */
 
- function drawPathsNSP(map, allPaths, pathCosts, epsilon) {
-    // Remove existing path layers
-    pathLayers.forEach(layer => map.removeLayer(layer));
-    pathLayers = [];
-
-    // Define path categories and corresponding styles
-    const pathCategories = [
-        { paths: filterNoNearShortest(allPaths, pathCosts, epsilon), color: "red", weight: 3 },  // NON-NSP
-        { paths: filterNearShortest(allPaths, pathCosts, epsilon), color: "darkblue", weight: 5 }      // NSP
-    ];
-
-    // Log path counts
-    pathCategories.forEach(({ paths }) => console.log(paths.length));
-
-    // Loop over each category and draw paths
-    pathCategories.forEach(({ paths, color, weight }) => {
-        paths.forEach(pathEdges => {
-            let geoJsonFeatures = pathEdges.map(([start, end]) => ({
-                type: "Feature",
-                geometry: {
-                    type: "LineString",
-                    coordinates: [nodes[start], nodes[end]]
-                },
-                properties: {}
-            }));
-
-            let layer = L.geoJSON(geoJsonFeatures, { style: { color, weight } }).addTo(map);
-            pathLayers.push(layer);
-        });
-    });
-}
-
 
 function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
     // Remove existing path layers
@@ -708,8 +400,6 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
 
 
 
-
-
 /* Graph Utils */
 
 function dijkstra(graph, start, end) {
@@ -727,6 +417,13 @@ function dijkstra(graph, start, end) {
 
     while (!pq.empty()) {
         let { node: minNode } = pq.pop(); // Fastest extraction
+
+        // Check if minNode exists in graph
+        if (!graph[minNode]) {
+            console.error("Node not found in graph:", minNode);
+            continue;  // Skip this node and continue with the next one
+        }
+
 
         if (minNode == end) break;
 
@@ -780,3 +477,294 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
+
+
+
+function getAttractorStatus(feature) {
+    // Example logic: Mark major roads as attractors
+    const attractorTypes = ["motorway", "trunk"];
+    if (feature.properties.tags && feature.properties.tags.highway) {
+        return attractorTypes.includes(feature.properties.tags.highway) ? 1 : 0;
+    }
+    return 0;
+}
+
+
+
+
+function createInfoBox() {
+    var infoBox = L.DomUtil.create("div", "info-box");
+    infoBox.innerHTML = "<strong>Route Info</strong><br>Click to select origin and destination.";
+    document.body.appendChild(infoBox);
+
+    window.updateInfoBox = function (origin, destination, NSP_count, spatialSpread, diverCityScore) {
+        let originCoords = nodes[origin];
+        let destinationCoords = nodes[destination];
+
+        let originLat = originCoords[1];
+        let originLng = originCoords[0];
+        let destinationLat = destinationCoords[1];
+        let destinationLng = destinationCoords[0];
+
+        let distance = haversineDistance(originLat, originLng, destinationLat, destinationLng);
+
+        infoBox.innerHTML = `
+            <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
+            <strong>Origin:</strong> ${origin} <br>
+            <strong>Destination:</strong> ${destination} <br>
+            <strong>OD Distance:</strong> ${distance.toFixed(2)} km <br>
+            <hr style="margin: 5px 0;">
+            <strong>#NSR:</strong> ${NSP_count} <br>
+            <strong>Spatial Spread:</strong> ${spatialSpread.toFixed(2)} <br>
+            <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">
+                DiverCity: ${diverCityScore.toFixed(2)}
+            </div>
+        `;
+    };
+
+    window.updateInfoBoxDefault = function() {
+        infoBox.innerHTML = `
+            <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
+            Click to select origin and destination.
+        `;
+    };
+}
+
+
+
+function createSliders() {
+    var sliderContainer = L.DomUtil.create("div", "slider-container");
+    sliderContainer.innerHTML = `
+        <div class="slider-header" id="slider-toggle">
+            Route Settings
+        </div>
+        <div class="slider-content" id="slider-content" style="display: none;">
+            <label class="tooltip" for="slider-k">
+                k: <span id="value-k">${k}</span>
+                <span class="tooltiptext">Number of alternative routes</span>
+            </label>
+            <input type="range" id="slider-k" min="1" max="10" step="1" value="${k}">
+            <br>
+            <label class="tooltip" for="slider-p">
+                p: <span id="value-p">${p}</span>
+                <span class="tooltiptext">The penalty factor for the Path Penalization algorithm</span>
+            </label>
+            <input type="range" id="slider-p" min="0" max="1" step="0.01" value="${p}">
+            <br>
+            <label class="tooltip" for="slider-eps">
+                ε (epsilon): <span id="value-eps">${epsilon}</span>
+                <span class="tooltiptext">The cost threshold for near-shortest routes</span>
+            </label>
+            <input type="range" id="slider-eps" min="0" max="1" step="0.01" value="${epsilon}">
+            <br>
+            <label class="tooltip" for="slider-max-it">
+                Max Iterations: <span id="value-max-it">${max_it}</span>
+                <span class="tooltiptext">Limit on pathfinding attempts</span>
+            </label>
+            <input type="range" id="slider-max-it" min="10" max="300" step="10" value="${max_it}">
+            <br>
+        </div>
+    `;
+    document.body.appendChild(sliderContainer);
+
+    document.getElementById("slider-toggle").addEventListener("click", function() {
+        var sliderContent = document.getElementById("slider-content");
+        sliderContent.style.display = sliderContent.style.display === "none" ? "block" : "none";
+    });
+
+    document.getElementById("slider-k").addEventListener("input", function() {
+        k = parseInt(this.value);
+        document.getElementById("value-k").innerText = k;
+    });
+
+    document.getElementById("slider-p").addEventListener("input", function() {
+        p = parseFloat(this.value);
+        document.getElementById("value-p").innerText = p.toFixed(2);
+    });
+
+    document.getElementById("slider-eps").addEventListener("input", function() {
+        epsilon = parseFloat(this.value);
+        document.getElementById("value-eps").innerText = epsilon.toFixed(2);
+    });
+
+    document.getElementById("slider-max-it").addEventListener("input", function() {
+        max_it = parseInt(this.value);
+        document.getElementById("value-max-it").innerText = max_it;
+    });
+}
+
+
+function addLegend() {
+    var legend = L.control({ position: "bottomright" });
+
+    legend.onAdd = function () {
+        let div = L.DomUtil.create("div", "legend-box");
+        div.innerHTML = `
+            <strong>Legend</strong>
+            <div class="legend-item">
+                <span class="legend-line" style="background: darkblue;"></span> NSR (Near Shortest Route)
+            </div>
+            <div class="legend-item">
+                <span class="legend-line" style="background: red;"></span> Non-NSR
+            </div>
+            <div class="legend-item">
+                <span class="legend-line" style="background: orange;"></span> Attractor Road
+            </div>
+        `;
+        return div;
+    };
+
+    legend.addTo(map);
+
+    var legendCSS = document.createElement("style");
+    legendCSS.innerHTML = `
+        .legend-box {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            padding: 6px 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #333;
+            line-height: 16px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-top: 3px;
+        }
+        .legend-line {
+            width: 25px;
+            height: 4px;
+            margin-right: 6px;
+            display: inline-block;
+            border-radius: 2px;
+        }
+    `;
+    document.head.appendChild(legendCSS);
+}
+
+
+function findClosestNode(latlng) {
+    let minDist = Infinity;
+    let closestNode = null;
+    
+    for (let nodeId in nodes) {
+        let nodeCoords = nodes[nodeId];
+        if (!nodeCoords) continue; // Skip if node coordinates are undefined
+        
+        let dist = Math.sqrt(Math.pow(nodeCoords[1] - latlng.lat, 2) + Math.pow(nodeCoords[0] - latlng.lng, 2));
+        if (dist < minDist) {
+            minDist = dist;
+            closestNode = nodeId;
+        }
+    }
+    
+    if (!closestNode) {
+        console.error("No closest node found for coordinates:", latlng);
+    }
+    
+    return closestNode;
+}
+
+
+
+function highlightNodes() {
+    // Clear existing markers
+    nodeMarkers.forEach(marker => map.removeLayer(marker));
+    nodeMarkers = [];
+
+    selectedNodes.forEach((nodeId, index) => {
+        let color = index === 0 ? "green" : "red";
+
+        let marker = L.marker([nodes[nodeId][1], nodes[nodeId][0]], {
+            draggable: true,  
+            icon: L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="
+                    background-color: ${color};
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 50%;
+                    border: 2px solid white;
+                    box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                </div>`,
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]  
+            })
+        }).addTo(map);
+
+        nodeMarkers.push(marker);
+
+        marker.on('dragend', function (e) {
+            let closestNode = findClosestNode(e.target.getLatLng());
+            selectedNodes[index] = closestNode;
+
+            if (selectedNodes.length === 2) {
+                let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it);
+                drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
+
+                let edgeWeights = {};
+                RoadsData.features.forEach(feature => {
+                    if (feature.geometry.type === "LineString") {
+                        let edge = [feature.properties.start, feature.properties.end];
+                        edgeWeights[edge] = feature.properties.length;
+                    }
+                });
+
+                let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
+                updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
+            }
+        });
+    });
+}
+
+
+
+function computeAndDrawPaths() {
+    // Compute K alternative paths
+    let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it);
+
+    // Draw paths with aggregation
+    drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
+
+    // Convert paths to edge weights for DiverCity metrics
+    let edgeWeights = {};
+    RoadsData.features.forEach(feature => {
+        if (feature.geometry.type === "LineString") {
+            let edge = [feature.properties.start, feature.properties.end];
+            edgeWeights[edge] = feature.properties.length;
+        }
+    });
+
+    // Compute DiverCity metrics
+    let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
+
+    // Update the information box with the computed metrics
+    updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
+
+    // Set the route computed flag to true
+    isRouteComputed = true;
+}
+
+
+function resetRoute() {
+    // Clear selected nodes array
+    selectedNodes = [];
+
+    // Remove all path layers from the map
+    pathLayers.forEach(layer => map.removeLayer(layer));
+    pathLayers = [];
+
+    // Remove all node markers from the map
+    nodeMarkers.forEach(marker => map.removeLayer(marker));
+    nodeMarkers = [];
+
+    // Reset the info box to its default message
+    updateInfoBoxDefault();
+
+    // Reset the route computed flag
+    isRouteComputed = false;
+}
+
+
