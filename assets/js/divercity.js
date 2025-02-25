@@ -66,7 +66,7 @@ function initializeLayers() {
 
 
 function initializeControls() {
-    //addDrawControl();
+    addDrawControl();
     createInfoBox();
     createSliders();
     addLegend();
@@ -80,6 +80,41 @@ function initializeEventListeners() {
 // ==========================
 // Graph & Network Functions
 // ==========================
+
+function addDrawControl() {
+  // Create a FeatureGroup to store drawn layers
+  let drawnItems = new L.FeatureGroup();
+  map.addLayer(drawnItems);
+
+  // Initialize the draw control with only the rectangle tool enabled
+  let drawControl = new L.Control.Draw({
+    draw: {
+      rectangle: true, // Enable rectangle drawing
+      polygon: false,
+      polyline: false,
+      circle: false,
+      marker: false,
+      circlemarker: false
+    },
+    edit: false
+  });
+  map.addControl(drawControl);
+
+  // Listen for the draw:created event
+  map.on('draw:created', function(e) {
+    // Add the drawn rectangle to the feature group (if needed for processing)
+    drawnItems.addLayer(e.layer);
+
+    // Process the drawn area (download new road network, etc.)
+    handleAreaSelection(e);
+
+    // Remove the rectangle from the map after processing
+    drawnItems.clearLayers();
+  });
+}
+
+
+
 
 function buildGraph(roadsData) {
     let graph = {}, nodes = {};
@@ -105,25 +140,35 @@ function buildGraph(roadsData) {
 }
 
 function initializeGraphNetwork(RoadsData) {
-    let updatedGraph = buildGraph(RoadsData);
-    graph = updatedGraph.graph;
-    nodes = updatedGraph.nodes;
+  // Rebuild the graph and node data using your buildGraph() function
+  let updatedGraph = buildGraph(RoadsData);
+  graph = updatedGraph.graph;
+  nodes = updatedGraph.nodes;
 
+  // Optionally, clean the graph if you have a cleanGraph() function
+  if (typeof cleanGraph === "function") {
     graph = cleanGraph(graph, nodes);
+  }
 
+  // Remove the existing edgeLayer from the map if it exists
+  if (edgeLayer) {
+    map.removeLayer(edgeLayer);
+  }
 
-    if (edgeLayer) map.removeLayer(edgeLayer);
+  // Create a new GeoJSON layer for the updated road network data
+  edgeLayer = L.geoJSON(RoadsData, {
+    style: styleRoads,         // Function to style roads
+    filter: filterLineString   // Filter to include only LineString features
+  }).addTo(map);
 
-    edgeLayer = L.geoJSON(RoadsData, {
-        style: styleRoads,
-        filter: filterLineString
-    }).addTo(map);
+  // Reset overlayLayers (if you use additional overlays)
+  overlayLayers = {};
 
-    // Ensure overlayLayers is defined before using it
-    overlayLayers = {};
+  // Update the layer control on the map with the new layers
+  updateLayerControl();
 
-    updateLayerControl();
-    map.fitBounds(edgeLayer.getBounds());
+  // Adjust the map view to fit the bounds of the new road network
+  map.fitBounds(edgeLayer.getBounds());
 }
 
 
@@ -157,19 +202,164 @@ function updateLayerControl() {
 // Event Handlers
 // ==========================
 
+// When the user draws a rectangle, get its bounds and download the road network.
 function handleAreaSelection(event) {
-    var layer = event.layer;
-    var bounds = layer.getBounds();
-    var bbox = `${bounds.getSouthWest().lat},${bounds.getSouthWest().lng},${bounds.getNorthEast().lat},${bounds.getNorthEast().lng}`;
+  var layer = event.layer;
+  var bounds = layer.getBounds();
+  // bbox as [south, west, north, east]
+  var bbox = [
+    bounds.getSouthWest().lat,
+    bounds.getSouthWest().lng,
+    bounds.getNorthEast().lat,
+    bounds.getNorthEast().lng
+  ];
 
-    selectedNodes = [];
-    queryOSMData(bbox).then(data => {
-        RoadsData = buildRoadsData(data);
-        initializeGraphNetwork(RoadsData);
-        selectedNodes = [];
-        highlightNodes();
-    }).catch(error => console.error('Error fetching OSM data:', error));
+  // Clear selected nodes (if any)
+  selectedNodes = [];
+
+  // Download and transform the road network data from Overpass API
+  downloadRoadNetwork(bbox)
+    .then(geojsonData => {
+      // Replace the current RoadsData with the newly generated one
+      RoadsData = geojsonData;
+      // Reinitialize the graph and update the map layers
+      initializeGraphNetwork(RoadsData);
+      selectedNodes = [];
+      highlightNodes();
+    })
+    .catch(error =>
+      console.error("Error fetching road network data:", error)
+    );
 }
+
+
+// Download road network data using Overpass API
+function downloadRoadNetwork(bbox) {
+  // bbox: [south, west, north, east]
+  let bboxStr = bbox.join(",");
+  // Overpass QL query: get driveable highways within the bbox
+  let query = `
+    [out:json][timeout:25];
+    (
+      way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$"](${bboxStr});
+    );
+    out body;
+    >;
+    out skel qt;
+  `;
+  let url =
+    "https://overpass-api.de/api/interpreter?data=" +
+    encodeURIComponent(query);
+
+  return fetch(url)
+    .then(response => {
+      if (!response.ok)
+        throw new Error("Network response was not ok");
+      return response.json();
+    })
+    .then(osmData => transformOSMDataToRoadsData(osmData));
+}
+
+
+
+
+function transformOSMDataToRoadsData(osmData) {
+  let nodes = {};
+  // Build a mapping of node IDs to coordinates ([lon, lat])
+  osmData.elements.forEach(el => {
+    if (el.type === "node") {
+      nodes[el.id] = [el.lon, el.lat];
+    }
+  });
+
+  let features_edges = [];
+  osmData.elements.forEach(el => {
+    if (el.type === "way") {
+      if (!el.nodes || el.nodes.length < 2) return;
+
+      // Determine highway type and assign a default speed (km/h)
+      let highwayType = el.tags ? el.tags.highway : "";
+      let speed = 50; // default speed
+      if (highwayType === "motorway") speed = 100;
+      else if (highwayType === "trunk") speed = 80;
+      else if (highwayType === "primary") speed = 60;
+      else if (highwayType === "secondary") speed = 50;
+      else if (highwayType === "tertiary") speed = 40;
+      else if (highwayType === "residential") speed = 30;
+      
+      // Flag attractor roads (e.g., motorway or trunk)
+      let is_attractor = (highwayType === "motorway" || highwayType === "trunk") ? 1 : 0;
+      
+      // Check if the road is one-way.
+      // OSM typically uses the "oneway" tag with value "yes" (or sometimes "-1" for reverse one-way).
+      let isOneWay = el.tags && (el.tags.oneway === "yes" || el.tags.oneway === "-1");
+      
+      // Create an edge for each consecutive pair of nodes in the way
+      for (let i = 1; i < el.nodes.length; i++) {
+        let start = el.nodes[i - 1];
+        let end = el.nodes[i];
+        if (!nodes[start] || !nodes[end]) continue;
+        let seg_coords = [nodes[start], nodes[end]];
+        // Compute segment length (in kilometers)
+        let seg_length = haversineDistance(
+          nodes[start][1], nodes[start][0],
+          nodes[end][1], nodes[end][0]
+        );
+        // Compute travel time (in hours)
+        let seg_travel_time = seg_length / speed;
+        
+        let feature = {
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: seg_coords },
+          properties: {
+            start: start.toString(),
+            end: end.toString(),
+            length: seg_length,
+            travel_time: seg_travel_time,
+            is_attractor: is_attractor
+          }
+        };
+        features_edges.push(feature);
+        
+        // If the road is not one-way, also add the reverse edge.
+        if (!isOneWay) {
+          let reverseFeature = {
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: seg_coords.slice().reverse() },
+            properties: {
+              start: end.toString(),
+              end: start.toString(),
+              length: seg_length,
+              travel_time: seg_travel_time,
+              is_attractor: is_attractor
+            }
+          };
+          features_edges.push(reverseFeature);
+        }
+      }
+    }
+  });
+
+  // Create Point features for nodes (for markers or info)
+  let features_nodes = [];
+  for (let nodeId in nodes) {
+    let feature = {
+      type: "Feature",
+      geometry: { type: "Point", coordinates: nodes[nodeId] },
+      properties: { id: nodeId.toString() }
+    };
+    features_nodes.push(feature);
+  }
+
+  return {
+    type: "FeatureCollection",
+    features: features_edges.concat(features_nodes)
+  };
+}
+
+
+
+
 
 function handleMapClick(event) {
     if (isRouteComputed) resetRoute();
@@ -323,8 +513,6 @@ function computeKAlternativePaths(graph, startNode, endNode, k, p, max_it=50) {
         console.warn(`Max iterations (${max_it}) reached before finding ${k} distinct paths.`);
     }
 
-    console.log(pathCosts)
-
     return { allPaths: Array.from(allPaths).map(path => JSON.parse(path)), pathCosts }; // Convert back to array format
 }
 
@@ -403,50 +591,57 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
 /* Graph Utils */
 
 function dijkstra(graph, start, end) {
-    let distances = {};
-    let previous = {};
-    let pq = new Heap((a, b) => a.priority - b.priority); // Min Heap
-    let edgePath = {};
+  // Convert start and end to strings for consistency
+  start = start.toString();
+  end = end.toString();
 
-    for (let node in graph) {
-        distances[node] = Infinity;
-        previous[node] = null;
-    }
-    distances[start] = 0;
-    pq.push({ node: start, priority: 0 });
+  let distances = {};
+  let previous = {};
+  let pq = new Heap((a, b) => a.priority - b.priority); // Min Heap
+  let edgePath = {};
 
-    while (!pq.empty()) {
-        let { node: minNode } = pq.pop(); // Fastest extraction
+  // Initialize distances and previous for every node in the graph
+  for (let node in graph) {
+    distances[node] = Infinity;
+    previous[node] = null;
+  }
+  distances[start] = 0;
+  pq.push({ node: start, priority: 0 });
 
-        // Check if minNode exists in graph
-        if (!graph[minNode]) {
-            console.error("Node not found in graph:", minNode);
-            continue;  // Skip this node and continue with the next one
-        }
+  while (!pq.empty()) {
+    let { node: minNode } = pq.pop();
 
-
-        if (minNode == end) break;
-
-        for (let neighbor of graph[minNode]) {
-            let alt = distances[minNode] + neighbor.weight;
-            if (alt < distances[neighbor.node]) {
-                distances[neighbor.node] = alt;
-                previous[neighbor.node] = minNode;
-                pq.push({ node: neighbor.node, priority: alt });
-                edgePath[neighbor.node] = neighbor.feature;
-            }
-        }
+    // Check if minNode exists in the graph
+    if (!graph[minNode]) {
+      console.error("Node not found in graph:", minNode);
+      continue;
     }
 
-    let path = [];
-    let current = end;
-    while (current) {
-        if (edgePath[current]) {
-            path.unshift(edgePath[current]);
-        }
-        current = previous[current];
+    if (minNode === end) break;
+
+    for (let neighbor of graph[minNode]) {
+      let alt = distances[minNode] + neighbor.weight;
+      // Ensure neighbor.node is a string
+      let neighborId = neighbor.node.toString();
+      if (alt < distances[neighborId]) {
+        distances[neighborId] = alt;
+        previous[neighborId] = minNode;
+        pq.push({ node: neighborId, priority: alt });
+        edgePath[neighborId] = neighbor.feature;
+      }
     }
-    return path;
+  }
+
+  // Build the path by walking backward from the end node
+  let path = [];
+  let current = end;
+  while (current) {
+    if (edgePath[current]) {
+      path.unshift(edgePath[current]);
+    }
+    current = previous[current];
+  }
+  return path;
 }
 
 
@@ -646,26 +841,36 @@ function addLegend() {
 
 
 function findClosestNode(latlng) {
-    let minDist = Infinity;
-    let closestNode = null;
+  let minDist = Infinity;
+  let closestNode = null;
+
+  // Iterate only over nodes that also exist in the graph
+  for (let nodeId in nodes) {
+    // Skip nodes that are not present in the graph
+    if (!graph.hasOwnProperty(nodeId)) continue;
     
-    for (let nodeId in nodes) {
-        let nodeCoords = nodes[nodeId];
-        if (!nodeCoords) continue; // Skip if node coordinates are undefined
-        
-        let dist = Math.sqrt(Math.pow(nodeCoords[1] - latlng.lat, 2) + Math.pow(nodeCoords[0] - latlng.lng, 2));
-        if (dist < minDist) {
-            minDist = dist;
-            closestNode = nodeId;
-        }
+    let nodeCoords = nodes[nodeId];
+    if (!nodeCoords) continue; // safeguard against undefined coordinates
+
+    // Compute distance (using simple Euclidean distance for this example)
+    let dist = Math.sqrt(
+      Math.pow(nodeCoords[1] - latlng.lat, 2) +
+      Math.pow(nodeCoords[0] - latlng.lng, 2)
+    );
+    
+    if (dist < minDist) {
+      minDist = dist;
+      closestNode = nodeId;
     }
-    
-    if (!closestNode) {
-        console.error("No closest node found for coordinates:", latlng);
-    }
-    
-    return closestNode;
+  }
+
+  if (!closestNode) {
+    console.error("No closest node found for coordinates:", latlng);
+  }
+  
+  return closestNode;
 }
+
 
 
 
