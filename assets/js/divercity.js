@@ -73,6 +73,7 @@ function initializeControls() {
     createInfoBox();
     createSliders();
     addLegend();
+    addScaleControl();
 }
 
 function initializeEventListeners() {
@@ -1061,4 +1062,15 @@ function updateRoutesOnParameterChange() {
         // Recompute and redraw paths with the new parameter values
         computeAndDrawPaths();
     }
+}
+
+
+function addScaleControl() {
+    // Add a scale control to the map
+    L.control.scale({
+        position: 'bottomleft',  // Position of the scale (options: 'bottomleft', 'bottomright', 'topleft', 'topright')
+        metric: true,            // Display in metric units (kilometers)
+        imperial: false,         // Disable imperial units (miles)
+        maxWidth: 200            // Maximum width of the scale bar (in pixels)
+    }).addTo(map);
 }
