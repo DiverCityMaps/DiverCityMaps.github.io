@@ -200,3 +200,26 @@
 .pulsing-marker {
   animation: pulse 1s infinite;
 }
+
+
+
+/* Create a dashed box inside the button */
+.leaflet-draw-toolbar .leaflet-draw-draw-rectangle::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 6px !important;
+  left: 6px !important;
+  right: 6px !important;
+  bottom: 6px !important;
+  border: 2px dashed #555 !important;
+}
+
+.leaflet-draw-toolbar .leaflet-draw-draw-rectangle {
+  background: white !important;
+  width: 32px !important;
+  height: 32px !important;
+  border: 1px solid #ccc !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  position: relative !important;
+}

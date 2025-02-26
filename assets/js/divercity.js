@@ -9,6 +9,9 @@ let k = 5, p = 0.1, epsilon = 0.3, max_it = 100;
 // Initialize overlayLayers as an empty object
 let overlayLayers = {};
 
+let previousBaseLayer = null;
+
+
 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 });
@@ -100,10 +103,36 @@ function addDrawControl() {
   });
   map.addControl(drawControl);
 
+  // Ensure this code runs after the draw control is added to the map
+    setTimeout(() => {
+      const drawButton = document.querySelector('.leaflet-draw-draw-rectangle');
+      if (drawButton) {
+        drawButton.addEventListener('click', function() {
+          // Switch to OSM base layer when the draw button is clicked
+          if (!map.hasLayer(osmLayer)) {
+            if (map.hasLayer(edgeLayer)) {
+              previousBaseLayer = edgeLayer;
+              map.removeLayer(edgeLayer);
+            }
+            map.addLayer(osmLayer);
+          }
+        });
+      }
+    }, 500);
+
+
   // Listen for the draw:created event
   map.on('draw:created', function(e) {
     // Add the drawn rectangle to the feature group (if needed for processing)
     drawnItems.addLayer(e.layer);
+
+     if (previousBaseLayer) {
+        map.removeLayer(osmLayer);
+        map.addLayer(previousBaseLayer);
+        previousBaseLayer = null;
+      }
+
+    
 
     // Process the drawn area (download new road network, etc.)
     handleAreaSelection(e);
