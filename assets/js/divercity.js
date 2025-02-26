@@ -809,26 +809,40 @@ function createSliders() {
         sliderContent.style.display = sliderContent.style.display === "none" ? "block" : "none";
     });
 
+    // Event listeners for sliders using 'change' event
     document.getElementById("slider-k").addEventListener("input", function() {
         k = parseInt(this.value);
         document.getElementById("value-k").innerText = k;
+    });
+    document.getElementById("slider-k").addEventListener("change", function() {
+        updateRoutesOnParameterChange();
     });
 
     document.getElementById("slider-p").addEventListener("input", function() {
         p = parseFloat(this.value);
         document.getElementById("value-p").innerText = p.toFixed(2);
     });
+    document.getElementById("slider-p").addEventListener("change", function() {
+        updateRoutesOnParameterChange();
+    });
 
     document.getElementById("slider-eps").addEventListener("input", function() {
         epsilon = parseFloat(this.value);
         document.getElementById("value-eps").innerText = epsilon.toFixed(2);
+    });
+    document.getElementById("slider-eps").addEventListener("change", function() {
+        updateRoutesOnParameterChange();
     });
 
     document.getElementById("slider-max-it").addEventListener("input", function() {
         max_it = parseInt(this.value);
         document.getElementById("value-max-it").innerText = max_it;
     });
+    document.getElementById("slider-max-it").addEventListener("change", function() {
+        updateRoutesOnParameterChange();
+    });
 }
+
 
 
 function addLegend() {
@@ -1031,4 +1045,20 @@ function parseMaxSpeed(maxspeed) {
     speed = numericSpeed; // Assume km/h if no units specified
   }
   return speed;
+}
+
+
+
+function updateRoutesOnParameterChange() {
+    // Check if two nodes are selected
+    if (selectedNodes.length === 2) {
+        console.log("Recomputing routes with updated parameters...");
+
+        // Clear existing routes
+        pathLayers.forEach(layer => map.removeLayer(layer));
+        pathLayers = [];
+
+        // Recompute and redraw paths with the new parameter values
+        computeAndDrawPaths();
+    }
 }
