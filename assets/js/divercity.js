@@ -132,7 +132,7 @@ function addDrawControl() {
         previousBaseLayer = null;
       }
 
-    
+
 
     // Process the drawn area (download new road network, etc.)
     handleAreaSelection(e);
@@ -140,6 +140,7 @@ function addDrawControl() {
     // Remove the rectangle from the map after processing
     drawnItems.clearLayers();
   });
+
 }
 
 
@@ -293,6 +294,9 @@ function downloadRoadNetwork(bbox) {
 
 
 function transformOSMDataToRoadsData(osmData) {
+
+    console.log(osmData)
+
   let nodes = {};
   // Build a mapping of node IDs to coordinates ([lon, lat])
   osmData.elements.forEach(el => {
@@ -309,12 +313,21 @@ function transformOSMDataToRoadsData(osmData) {
       // Determine highway type and assign a default speed (km/h)
       let highwayType = el.tags ? el.tags.highway : "";
       let speed = 50; // default speed
-      if (highwayType === "motorway") speed = 100;
-      else if (highwayType === "trunk") speed = 80;
-      else if (highwayType === "primary") speed = 60;
-      else if (highwayType === "secondary") speed = 50;
-      else if (highwayType === "tertiary") speed = 40;
-      else if (highwayType === "residential") speed = 30;
+
+
+      // Get maxspeed from OSM tags if present
+      if (el.tags && el.tags.maxspeed) {
+        speed = parseMaxSpeed(el.tags.maxspeed);
+        console.log("parsed - ", speed)
+      } else {
+        // Fallback to default speed per road type
+        if (highwayType === "motorway") speed = 100;
+        else if (highwayType === "trunk") speed = 80;
+        else if (highwayType === "primary") speed = 60;
+        else if (highwayType === "secondary") speed = 50;
+        else if (highwayType === "tertiary") speed = 40;
+        else if (highwayType === "residential") speed = 30;
+      }
       
       // Flag attractor roads (e.g., motorway or trunk)
       let is_attractor = (highwayType === "motorway" || highwayType === "trunk") ? 1 : 0;
@@ -335,7 +348,7 @@ function transformOSMDataToRoadsData(osmData) {
           nodes[end][1], nodes[end][0]
         );
         // Compute travel time (in hours)
-        let seg_travel_time = seg_length / speed;
+        let seg_travel_time = (seg_length / speed) * 3600;
         
         let feature = {
           type: "Feature",
@@ -1002,3 +1015,20 @@ function resetRoute() {
 }
 
 
+// Function to parse maxspeed values
+function parseMaxSpeed(maxspeed) {
+  if (!maxspeed) return 50; // Default to 50 km/h if not provided
+
+  let speed = 50;
+  // Extract numeric value
+  let numericSpeed = parseInt(maxspeed.replace(/\D/g, ''));
+  if (isNaN(numericSpeed)) return speed;
+
+  // Check for units (assume km/h if none specified)
+  if (maxspeed.includes('mph')) {
+    speed = Math.round(numericSpeed * 1.60934); // Convert mph to km/h
+  } else {
+    speed = numericSpeed; // Assume km/h if no units specified
+  }
+  return speed;
+}
