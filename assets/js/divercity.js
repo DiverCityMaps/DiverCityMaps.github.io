@@ -866,7 +866,7 @@ function addLegend() {
                 <span class="legend-line" style="background: red;"></span> Non-NSR
             </div>
             <div class="legend-item">
-                <span class="legend-line" style="background: orange;"></span> Attractor Road
+                <span class="legend-line" style="background: #FFE5B4;"></span> Attractor Road
             </div>
         `;
         return div;
