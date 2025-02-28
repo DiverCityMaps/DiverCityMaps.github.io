@@ -225,3 +225,12 @@
 }
 
 
+.leaflet-container {
+  background: #FCFCFC !important;
+  outline-offset: 1px;
+}
+
+
+.leaflet-pane.leaflet-vector-pane svg path {
+    vector-effect: non-scaling-stroke;
+}
