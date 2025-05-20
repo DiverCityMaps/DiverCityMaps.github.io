@@ -275,10 +275,11 @@ function downloadRoadNetwork(bbox) {
   // bbox: [south, west, north, east]
   let bboxStr = bbox.join(",");
   // Overpass QL query: get driveable highways within the bbox
+  // motorway|trunk|primary|secondary|tertiary|unclassified|residential
   let query = `
     [out:json][timeout:25];
     (
-      way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$"](${bboxStr});
+      way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"](${bboxStr});
     );
     out body;
     >;
@@ -758,7 +759,7 @@ function createInfoBox() {
             <strong>Destination:</strong> ${destination} <br>
             <strong>OD Distance:</strong> ${distance.toFixed(2)} km <br>
             <hr style="margin: 5px 0;">
-            <strong>#NSR:</strong> ${NSP_count} <br>
+            <strong># Near Shortest Routes:</strong> ${NSP_count} <br>
             <strong>Spatial Spread:</strong> ${spatialSpread.toFixed(2)} <br>
             <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">
                 DiverCity: ${diverCityScore.toFixed(2)}
