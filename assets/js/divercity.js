@@ -51,6 +51,7 @@ function initializeLayers() {
     graph = bgraph.graph;
     nodes = bgraph.nodes;
 
+
     edgeLayer = L.geoJSON(RoadsData, {
         style: styleRoads,
         filter: filterLineString
@@ -65,6 +66,7 @@ function initializeLayers() {
     overlayLayers = {};  // Initialize or clear existing layers
 
     layerControl = L.control.layers(baseLayers, overlayLayers, {collapsed: false}).addTo(map);
+
 }
 
 
@@ -77,7 +79,6 @@ function initializeControls() {
 }
 
 function initializeEventListeners() {
-    map.on('draw:created', handleAreaSelection);
     map.on('click', handleMapClick);
 }
 
@@ -167,6 +168,10 @@ function buildGraph(roadsData) {
             nodes[feature.properties.id] = feature.geometry.coordinates;
         }
     });
+
+    console.log("**** # nodes")
+    console.log(Object.keys(nodes).length)
+
     return { graph, nodes };
 }
 
@@ -303,7 +308,7 @@ function downloadRoadNetwork(bbox) {
 
 function transformOSMDataToRoadsData(osmData) {
 
-    console.log(osmData)
+  console.log(osmData)
 
   let nodes = {};
   // Build a mapping of node IDs to coordinates ([lon, lat])
@@ -312,6 +317,11 @@ function transformOSMDataToRoadsData(osmData) {
       nodes[el.id] = [el.lon, el.lat];
     }
   });
+
+
+  console.log("**** # nodes [OSM]")
+  console.log(Object.keys(nodes).length)
+
 
   let features_edges = [];
   osmData.elements.forEach(el => {
@@ -326,7 +336,6 @@ function transformOSMDataToRoadsData(osmData) {
       // Get maxspeed from OSM tags if present
       if (el.tags && el.tags.maxspeed) {
         speed = parseMaxSpeed(el.tags.maxspeed);
-        console.log("parsed - ", speed)
       } else {
         // Fallback to default speed per road type
         if (highwayType === "motorway") speed = 100;
@@ -405,6 +414,9 @@ function transformOSMDataToRoadsData(osmData) {
     type: "FeatureCollection",
     features: features_edges.concat(features_nodes)
   };
+
+
+
 }
 
 
@@ -1081,3 +1093,5 @@ function addScaleControl() {
         maxWidth: 200            // Maximum width of the scale bar (in pixels)
     }).addTo(map);
 }
+
+
