@@ -6,9 +6,9 @@ let selectedNodes = [], nodeMarkers = [], pathLayers = [];
 let isRouteComputed = false;
 let k = 5, p = 0.1, epsilon = 0.3, max_it = 100;
 
+
 // Initialize overlayLayers as an empty object
 let overlayLayers = {};
-
 let previousBaseLayer = null;
 
 
@@ -799,16 +799,28 @@ function createInfoBox() {
 
         let distance = haversineDistance(originLat, originLng, destinationLat, destinationLng);
 
+        const highThreshold = 0.6 * k;
+        const lowThreshold = 0.4 * k;
+        let arrowHTML = ''
+
+        console.log(k)
+
+        if (diverCityScore > highThreshold) {
+            arrowHTML = `<span style="color:darkblue">▲</span>`;
+        } else if (diverCityScore < lowThreshold) {
+            arrowHTML = `<span style="color:red">▼</span>`;
+        }
+
         infoBox.innerHTML = `
             <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
             <strong>Origin:</strong> ${origin} <br>
             <strong>Destination:</strong> ${destination} <br>
             <strong>OD Distance:</strong> ${distance.toFixed(2)} km <br>
             <hr style="margin: 5px 0;">
-            <strong># Near Shortest Routes:</strong> ${NSP_count} <br>
+            <strong>Near Shortest Routes:</strong> ${NSP_count} <br>
             <strong>Spatial Spread:</strong> ${spatialSpread.toFixed(2)} <br>
             <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">
-                DiverCity: ${diverCityScore.toFixed(2)}
+                DiverCity: ${diverCityScore.toFixed(2)} ${arrowHTML}
             </div>
         `;
     };
@@ -1038,30 +1050,30 @@ function highlightNodes() {
 
 
 function computeAndDrawPaths() {
-    // Compute K alternative paths
-    let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it);
 
-    // Draw paths with aggregation
-    drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
+   
+        // Compute K alternative paths
+        const { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it);
 
-    // Convert paths to edge weights for DiverCity metrics
-    let edgeWeights = {};
-    RoadsData.features.forEach(feature => {
-        if (feature.geometry.type === "LineString") {
-            let edge = [feature.properties.start, feature.properties.end];
-            edgeWeights[edge] = feature.properties.length;
-        }
-    });
+        // Draw aggregated paths
+        drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
 
-    // Compute DiverCity metrics
-    let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
+        // Build edge weights once from current RoadsData
+        const edgeWeights = {};
+        RoadsData.features.forEach(f => {
+            if (f.geometry.type === "LineString") {
+                const e = [f.properties.start, f.properties.end];
+                edgeWeights[e] = f.properties.length;
+            }
+        });
 
-    // Update the information box with the computed metrics
-    updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
+        // Metrics
+        const { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
+        updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
 
-    // Set the route computed flag to true
-    isRouteComputed = true;
-}
+        isRouteComputed = true;
+  
+    }
 
 
 function resetRoute() {
