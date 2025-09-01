@@ -44,6 +44,29 @@ function initializeMap() {
     initializeControls();
     initializeEventListeners();
     map.fitBounds(edgeLayer.getBounds());
+
+    // --- Custom Panes for Z-Index Control ---
+    //map.createPane('roads');
+    //map.getPane('roads').style.zIndex = 400;
+
+    map.createPane('routes');
+    map.getPane('routes').style.zIndex = 650;
+    map.getPane('routes').style.pointerEvents = 'none';
+
+    map.createPane('markers');
+    map.getPane('markers').style.zIndex = 700;
+
+
+    function ensureRoutesOnTop() {
+        pathLayers.forEach(layer => {
+            if (!layer) return;
+            if (layer.eachLayer) layer.eachLayer(l => l.bringToFront());
+            else if (layer.bringToFront) layer.bringToFront();
+        });}
+
+    map.on('overlayadd', ensureRoutesOnTop);
+    map.on('overlayremove', ensureRoutesOnTop);
+
 }
 
 function initializeLayers() {
@@ -120,7 +143,10 @@ function addDrawControl() {
           }
         });
       }
+
     }, 500);
+
+
 
 
   // Listen for the draw:created event
@@ -176,6 +202,9 @@ function buildGraph(roadsData) {
 }
 
 function initializeGraphNetwork(RoadsData) {
+
+  ensureCustomPanes(map);
+
   // Rebuild the graph and node data using your buildGraph() function
   let updatedGraph = buildGraph(RoadsData);
   graph = updatedGraph.graph;
@@ -192,10 +221,12 @@ function initializeGraphNetwork(RoadsData) {
   }
 
   // Create a new GeoJSON layer for the updated road network data
-  edgeLayer = L.geoJSON(RoadsData, {
-    style: styleRoads,         // Function to style roads
-    filter: filterLineString   // Filter to include only LineString features
-  }).addTo(map);
+    edgeLayer = L.geoJSON(RoadsData, {
+        pane: 'roads',
+        style: styleRoads,
+        filter: filterLineString,
+        interactive: false  // prevents blocking clicks
+    }).addTo(map);
 
   // Reset overlayLayers (if you use additional overlays)
   overlayLayers = {};
@@ -636,16 +667,18 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
         });
 
         let layer = L.geoJSON(geoJsonFeatures, {
+            pane: 'routes', 
             style: feature => ({
                 color: color,
                 weight: feature.properties.weight
             })
         }).addTo(map);
 
+        layer.bringToFront(); // optional, helps in edge cases
+
         pathLayers.push(layer);
     });
 }
-
 
 
 
@@ -750,6 +783,7 @@ function getAttractorStatus(feature) {
 
 
 function createInfoBox() {
+    
     var infoBox = L.DomUtil.create("div", "info-box");
     infoBox.innerHTML = "<strong>Route Info</strong><br>Click to select origin and destination.";
     document.body.appendChild(infoBox);
@@ -959,7 +993,8 @@ function highlightNodes() {
         let color = index === 0 ? "green" : "red";
 
         let marker = L.marker([nodes[nodeId][1], nodes[nodeId][0]], {
-            draggable: true,  
+            pane: 'markers',
+            draggable: true,
             icon: L.divIcon({
                 className: 'custom-marker',
                 html: `<div style="
@@ -971,7 +1006,7 @@ function highlightNodes() {
                     box-shadow: 0 0 5px rgba(0,0,0,0.5);">
                 </div>`,
                 iconSize: [20, 20],
-                iconAnchor: [10, 10]  
+                iconAnchor: [10, 10]
             })
         }).addTo(map);
 
@@ -1095,3 +1130,20 @@ function addScaleControl() {
 }
 
 
+function ensureCustomPanes(map) {
+    //if (!map.getPane('roads')) {
+    //    map.createPane('roads');
+    //    map.getPane('roads').style.zIndex = 400;
+    //}
+
+    if (!map.getPane('routes')) {
+        map.createPane('routes');
+        map.getPane('routes').style.zIndex = 650;
+        map.getPane('routes').style.pointerEvents = 'none';
+    }
+
+    if (!map.getPane('markers')) {
+        map.createPane('markers');
+        map.getPane('markers').style.zIndex = 700;
+    }
+}
