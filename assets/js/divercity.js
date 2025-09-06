@@ -455,6 +455,7 @@ function transformOSMDataToRoadsData(osmData) {
 
 
 function handleMapClick(event) {
+
     if (isRouteComputed) resetRoute();
     let closestNode = findClosestNode(event.latlng);
     if (closestNode) {
@@ -1143,10 +1144,12 @@ function addScaleControl() {
 
 
 function ensureCustomPanes(map) {
-    //if (!map.getPane('roads')) {
-    //    map.createPane('roads');
-    //    map.getPane('roads').style.zIndex = 400;
-    //}
+
+    
+    if (!map.getPane('roads')) {
+        map.createPane('roads');
+        map.getPane('roads').style.zIndex = 400;
+    }
 
     if (!map.getPane('routes')) {
         map.createPane('routes');
