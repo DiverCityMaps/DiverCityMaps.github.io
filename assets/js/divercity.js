@@ -249,11 +249,6 @@ function styleRoads(feature) {
         : { color: "#D3D3D3", weight: 0.35 };
 }
 
-//function styleRoads(feature) {
-//    return feature.properties.is_attractor === 1
-//        ? { color: "#D0D0D0", weight: 1.5 }
-//        : { color: "#D3D3D3", weight: 0.35 };
-//}
 
 function filterLineString(feature) {
     return feature.geometry.type === "LineString";
@@ -315,7 +310,7 @@ function downloadRoadNetwork(bbox) {
   let query = `
     [out:json][timeout:25];
     (
-      way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"](${bboxStr});
+      way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential)$"](${bboxStr});
     );
     out body;
     >;
