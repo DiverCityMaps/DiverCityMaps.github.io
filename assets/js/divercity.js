@@ -1119,7 +1119,10 @@ function addAboutPanel() {
             <div style="margin-top: 10px; display: flex; gap: 12px;">
             <a href="https://arxiv.org/abs/2510.02582" target="_blank" class="about-link">📄 Paper (pre-print)</a>
             <a href="https://github.com/GiulianoCornacchia/DiverCity" target="_blank" class="about-link">💻 Code</a>
-        </div>
+          </div>
+          <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid #eee; font-size: 11px; color: #aaa;">
+              Dashboard designed by <a href="www.linkedin.com/in/giuliano-cornacchia/" target="_blank" style="color: #aaa; text-decoration: underline;">Giuliano Cornacchia</a>
+          </div>
         </div>
     `;
     document.body.appendChild(overlay);
