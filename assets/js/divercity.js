@@ -385,8 +385,7 @@ function hideMapLoader() {
 function downloadRoadNetwork(bbox) {
 
   const [s, w, n, e] = bbox.map(v => +v.toFixed(5));
-  const query = `[out:json][timeout:120];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$"]["access"!="no"]["motor_vehicle"!="no"](${s},${w},${n},${e}););out body;>;out skel qt;`;
-  
+  const query = `[out:json][timeout:120];(way["highway"~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|unclassified|residential)$"]["access"!="no"]["motor_vehicle"!="no"](${s},${w},${n},${e}););out body;>;out skel qt;`;  
   return fetch("https://overpass-api.de/api/interpreter", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -465,17 +464,21 @@ function transformOSMDataToRoadsData(osmData) {
     const is_attractor = (highwayType === "motorway" || highwayType === "trunk") ? 1 : 0;
  
     // Speed (km/h): prefer explicit maxspeed tag, fall back to road-type default
+    const parsedSpeed = (el.tags && el.tags.maxspeed) ? parseMaxSpeed(el.tags.maxspeed) : null;
     let speed = 50;
-    if (tags.maxspeed) {
-      speed = parseMaxSpeed(tags.maxspeed);
+
+    if (parsedSpeed !== null) {
+        speed = parsedSpeed;
     } else {
-      const speedDefaults = {
-        motorway: 100, trunk: 80, primary: 60,
-        secondary: 50, tertiary: 40, residential: 30
-      };
-      speed = speedDefaults[highwayType] || 50;
+        if (highwayType === "motorway") speed = 130;
+        else if (highwayType === "trunk") speed = 110;
+        else if (highwayType === "primary") speed = 70;
+        else if (highwayType === "secondary") speed = 60;
+        else if (highwayType === "tertiary") speed = 50;
+        else if (highwayType === "unclassified") speed = 40;
+        else if (highwayType === "residential") speed = 30;
     }
- 
+   
     // Directionality
     const isReversed = tags.oneway === "-1";
     const isOneWay   = tags.oneway === "yes" || isReversed;
@@ -1320,22 +1323,31 @@ function resetRoute() {
 }
 
 
-// Function to parse maxspeed values
 function parseMaxSpeed(maxspeed) {
-  if (!maxspeed) return 50; // Default to 50 km/h if not provided
+    if (!maxspeed) return null;
 
-  let speed = 50;
-  // Extract numeric value
-  let numericSpeed = parseInt(maxspeed.replace(/\D/g, ''));
-  if (isNaN(numericSpeed)) return speed;
+    // Codici nazionali standard ISO (es. IT:motorway, DE:rural, FR:urban)
+    const nationalCodes = {
+        'motorway':  130, 'rural':    90,
+        'urban':      50, 'living_street': 10,
+        'walk':       10, 'bicycle':  25
+    };
 
-  // Check for units (assume km/h if none specified)
-  if (maxspeed.includes('mph')) {
-    speed = Math.round(numericSpeed * 1.60934); // Convert mph to km/h
-  } else {
-    speed = numericSpeed; // Assume km/h if no units specified
-  }
-  return speed;
+    // Controlla se è un codice tipo "IT:motorway" o "DE:rural"
+    const codeMatch = maxspeed.match(/^[A-Z]{2}:(.+)$/i);
+    if (codeMatch) {
+        const code = codeMatch[1].toLowerCase();
+        if (nationalCodes[code]) return nationalCodes[code];
+        return null; // codice sconosciuto → usa default per tipo di strada
+    }
+
+    // Valore numerico (es. "130", "50 mph")
+    const numericSpeed = parseInt(maxspeed);
+    if (isNaN(numericSpeed)) return null;
+
+    return maxspeed.includes('mph')
+        ? Math.round(numericSpeed * 1.60934)
+        : numericSpeed;
 }
 
 
