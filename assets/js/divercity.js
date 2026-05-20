@@ -13,7 +13,7 @@ let previousBaseLayer = null;
 
 
 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Road network data © OpenStreetMap contributors, <a href="https://opendatacommons.org/licenses/odbl/" target="_blank">ODbL</a>'
 });
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -99,6 +99,7 @@ function initializeControls() {
     createSliders();
     addLegend();
     addScaleControl();
+    addAboutPanel(); 
 }
 
 function initializeEventListeners() {
@@ -128,23 +129,70 @@ function addDrawControl() {
   });
   map.addControl(drawControl);
 
-  // Ensure this code runs after the draw control is added to the map
-    setTimeout(() => {
-      const drawButton = document.querySelector('.leaflet-draw-draw-rectangle');
-      if (drawButton) {
-        drawButton.addEventListener('click', function() {
-          // Switch to OSM base layer when the draw button is clicked
-          if (!map.hasLayer(osmLayer)) {
-            if (map.hasLayer(edgeLayer)) {
-              previousBaseLayer = edgeLayer;
-              map.removeLayer(edgeLayer);
-            }
-            map.addLayer(osmLayer);
-          }
-        });
-      }
+  setTimeout(() => {
+    const drawButton = document.querySelector('.leaflet-draw-draw-rectangle');
+    if (!drawButton) return;
 
-    }, 500);
+    let step = 0;
+
+    const btn = document.createElement('div');
+    btn.className = 'load-city-btn';
+    document.getElementById('map').appendChild(btn);
+
+    function setStep(s) {
+        step = s;
+        if (s === 0) {
+            btn.innerHTML = `
+                <div class="btn-icon">🗺️</div>
+                <div class="btn-text">
+                    <div class="btn-title">Load a new city</div>
+                    <div class="btn-subtitle">Draw a rectangle on the map</div>
+                </div>`;
+            btn.classList.remove('drawing');
+        } else if (s === 1) {
+            btn.innerHTML = `
+                <div class="btn-icon">🔍</div>
+                <div class="btn-text">
+                    <div class="btn-title">Navigate to your city</div>
+                    <div class="btn-subtitle">Then click here to draw</div>
+                </div>`;
+            btn.classList.remove('drawing');
+            if (!map.hasLayer(osmLayer)) {
+                if (map.hasLayer(edgeLayer)) {
+                    previousBaseLayer = edgeLayer;
+                    map.removeLayer(edgeLayer);
+                }
+                map.addLayer(osmLayer);
+            }
+        } else if (s === 2) {
+            map.off('click', handleMapClick);
+            btn.innerHTML = `
+                <div class="btn-icon">✏️</div>
+                <div class="btn-text">
+                    <div class="btn-title">Draw the area</div>
+                    <div class="btn-subtitle">Click and drag on the map</div>
+                </div>`;
+            btn.classList.add('drawing');
+            drawButton.click();
+        }
+    }
+
+    btn.addEventListener('click', () => {
+        if (step === 0) setStep(1);
+        else if (step === 1) setStep(2);
+    });
+
+    map.on('draw:created', () => {
+        map.on('click', handleMapClick);
+        setStep(0);
+    });
+    map.on('draw:drawstop', () => {
+        map.on('click', handleMapClick);
+        if (step === 2) setStep(0);
+    });
+
+    setStep(0);
+  }, 500);
 
 
 
@@ -274,183 +322,273 @@ function updateLayerControl() {
 function handleAreaSelection(event) {
   var layer = event.layer;
   var bounds = layer.getBounds();
-  // bbox as [south, west, north, east]
   var bbox = [
-    bounds.getSouthWest().lat,
-    bounds.getSouthWest().lng,
-    bounds.getNorthEast().lat,
-    bounds.getNorthEast().lng
+    +bounds.getSouthWest().lat.toFixed(5),
+    +bounds.getSouthWest().lng.toFixed(5),
+    +bounds.getNorthEast().lat.toFixed(5),
+    +bounds.getNorthEast().lng.toFixed(5)
   ];
 
-  // Clear selected nodes (if any)
-  selectedNodes = [];
+  // Rimuovi grafo e route correnti
+  resetRoute();
+  if (edgeLayer) {
+    map.removeLayer(edgeLayer);
+    edgeLayer = null;
+  }
 
-  // Download and transform the road network data from Overpass API
+  showMapLoader("Downloading road network…");
+
   downloadRoadNetwork(bbox)
     .then(geojsonData => {
-      // Replace the current RoadsData with the newly generated one
       RoadsData = geojsonData;
-      // Reinitialize the graph and update the map layers
       initializeGraphNetwork(RoadsData);
       selectedNodes = [];
       highlightNodes();
+      hideMapLoader();
     })
-    .catch(error =>
-      console.error("Error fetching road network data:", error)
-    );
+    .catch(error => {
+      hideMapLoader();
+      console.error("Error fetching road network data:", error);
+    });
 }
 
 
-// Download road network data using Overpass API
-function downloadRoadNetwork(bbox) {
-  // bbox: [south, west, north, east]
-  let bboxStr = bbox.join(",");
-  // Overpass QL query: get driveable highways within the bbox
-  // motorway|trunk|primary|secondary|tertiary|unclassified|residential
-  let query = `
-    [out:json][timeout:25];
-    (
-      way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential)$"](${bboxStr});
-    );
-    out body;
-    >;
-    out skel qt;
-  `;
-  let url =
-    "https://overpass-api.de/api/interpreter?data=" +
-    encodeURIComponent(query);
+function showMapLoader(message) {
+  let loader = document.getElementById('map-loader');
+  if (!loader) {
+    loader = document.createElement('div');
+    loader.id = 'map-loader';
+    loader.style.cssText = `
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(255,255,255,0.85);
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      z-index: 9999; font-family: Arial, sans-serif;
+    `;
+    loader.innerHTML = `
+      <div class="spinner"></div>
+      <div id="map-loader-msg" style="margin-top: 20px; font-size: 15px; font-weight: bold; color: #333;"></div>
+    `;
+    document.body.appendChild(loader);
+  }
+  document.getElementById('map-loader-msg').textContent = message;
+  loader.style.display = 'flex';
+}
 
-  return fetch(url)
+function hideMapLoader() {
+  const loader = document.getElementById('map-loader');
+  if (loader) loader.style.display = 'none';
+}
+
+
+function downloadRoadNetwork(bbox) {
+
+  const [s, w, n, e] = bbox.map(v => +v.toFixed(5));
+  const query = `[out:json][timeout:120];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$"]["access"!="no"]["motor_vehicle"!="no"](${s},${w},${n},${e}););out body;>;out skel qt;`;
+  
+  return fetch("https://overpass-api.de/api/interpreter", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "data=" + encodeURIComponent(query)
+  })
     .then(response => {
-      if (!response.ok)
-        throw new Error("Network response was not ok");
+      if (!response.ok) throw new Error("Network response was not ok");
       return response.json();
     })
     .then(osmData => transformOSMDataToRoadsData(osmData));
 }
 
 
-
-
 function transformOSMDataToRoadsData(osmData) {
-
-  console.log(osmData)
-
-  let nodes = {};
-  // Build a mapping of node IDs to coordinates ([lon, lat])
+ 
+  // ------------------------------------------------------------------
+  // Step 1: Build coordinate map  nodeId → [lon, lat]
+  // ------------------------------------------------------------------
+  const nodeCoords = {};
   osmData.elements.forEach(el => {
     if (el.type === "node") {
-      nodes[el.id] = [el.lon, el.lat];
+      nodeCoords[el.id] = [el.lon, el.lat];
     }
   });
-
-
-  console.log("**** # nodes [OSM]")
-  console.log(Object.keys(nodes).length)
-
-
-  let features_edges = [];
+ 
+  // ------------------------------------------------------------------
+  // Step 2: Count how many distinct ways reference each node.
+  //         We use a Set per node to avoid double-counting a node that
+  //         appears multiple times within the same way.
+  // ------------------------------------------------------------------
+  const nodeWayCount = {};   // nodeId → number of distinct ways
   osmData.elements.forEach(el => {
-    if (el.type === "way") {
-      if (!el.nodes || el.nodes.length < 2) return;
-
-      // Determine highway type and assign a default speed (km/h)
-      let highwayType = el.tags ? el.tags.highway : "";
-      let speed = 50; // default speed
-
-
-      // Get maxspeed from OSM tags if present
-      if (el.tags && el.tags.maxspeed) {
-        speed = parseMaxSpeed(el.tags.maxspeed);
-      } else {
-        // Fallback to default speed per road type
-        if (highwayType === "motorway") speed = 100;
-        else if (highwayType === "trunk") speed = 80;
-        else if (highwayType === "primary") speed = 60;
-        else if (highwayType === "secondary") speed = 50;
-        else if (highwayType === "tertiary") speed = 40;
-        else if (highwayType === "residential") speed = 30;
+    if (el.type !== "way" || !el.nodes) return;
+    const seen = new Set(el.nodes);
+    seen.forEach(nodeId => {
+      nodeWayCount[nodeId] = (nodeWayCount[nodeId] || 0) + 1;
+    });
+  });
+ 
+  // ------------------------------------------------------------------
+  // Step 3: Identify "true intersection" nodes.
+  //         A node is kept in the simplified graph if:
+  //           a) it is the first or last node of any way  (endpoint)
+  //           b) it appears in more than one way          (real intersection)
+  //
+  //         Everything else is just a geometry shaping point and can be
+  //         folded into the edge geometry without becoming a graph node.
+  // ------------------------------------------------------------------
+  const intersectionNodes = new Set();
+  osmData.elements.forEach(el => {
+    if (el.type !== "way" || !el.nodes || el.nodes.length < 2) return;
+    // Endpoints are always kept
+    intersectionNodes.add(el.nodes[0]);
+    intersectionNodes.add(el.nodes[el.nodes.length - 1]);
+    // Interior nodes shared by multiple ways
+    for (let i = 1; i < el.nodes.length - 1; i++) {
+      if ((nodeWayCount[el.nodes[i]] || 0) > 1) {
+        intersectionNodes.add(el.nodes[i]);
       }
-      
-      // Flag attractor roads (e.g., motorway or trunk)
-      let is_attractor = (highwayType === "motorway" || highwayType === "trunk") ? 1 : 0;
-      
-      // Check if the road is one-way.
-      // OSM typically uses the "oneway" tag with value "yes" (or sometimes "-1" for reverse one-way).
-      let isOneWay = el.tags && (el.tags.oneway === "yes" || el.tags.oneway === "-1");
-      
-      // Create an edge for each consecutive pair of nodes in the way
-      for (let i = 1; i < el.nodes.length; i++) {
-        let start = el.nodes[i - 1];
-        let end = el.nodes[i];
-        if (!nodes[start] || !nodes[end]) continue;
-        let seg_coords = [nodes[start], nodes[end]];
-        // Compute segment length (in kilometers)
-        let seg_length = haversineDistance(
-          nodes[start][1], nodes[start][0],
-          nodes[end][1], nodes[end][0]
-        );
-        // Compute travel time (in hours)
-        let seg_travel_time = (seg_length / speed) * 3600;
-        
-        let feature = {
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: seg_coords },
-          properties: {
-            start: start.toString(),
-            end: end.toString(),
-            length: seg_length,
-            travel_time: seg_travel_time,
-            is_attractor: is_attractor
-          }
-        };
-        features_edges.push(feature);
-        
-        // If the road is not one-way, also add the reverse edge.
-        if (!isOneWay) {
-          let reverseFeature = {
+    }
+  });
+ 
+  // ------------------------------------------------------------------
+  // Step 4: Walk each way and emit one simplified edge per pair of
+  //         consecutive intersection nodes, accumulating geometry,
+  //         length, and travel time along the way.
+  // ------------------------------------------------------------------
+  const features_edges = [];
+ 
+  osmData.elements.forEach(el => {
+    if (el.type !== "way" || !el.nodes || el.nodes.length < 2) return;
+ 
+    // --- Road attributes ---
+    const tags        = el.tags || {};
+    const highwayType = tags.highway || "";
+    const is_attractor = (highwayType === "motorway" || highwayType === "trunk") ? 1 : 0;
+ 
+    // Speed (km/h): prefer explicit maxspeed tag, fall back to road-type default
+    let speed = 50;
+    if (tags.maxspeed) {
+      speed = parseMaxSpeed(tags.maxspeed);
+    } else {
+      const speedDefaults = {
+        motorway: 100, trunk: 80, primary: 60,
+        secondary: 50, tertiary: 40, residential: 30
+      };
+      speed = speedDefaults[highwayType] || 50;
+    }
+ 
+    // Directionality
+    const isReversed = tags.oneway === "-1";
+    const isOneWay   = tags.oneway === "yes" || isReversed;
+ 
+    // --- Walk the node sequence, splitting at intersection nodes ---
+    // segStart      : OSM id of the intersection node where this segment begins
+    // segCoords     : accumulated [lon, lat] coordinate list (full geometry)
+    // segLength     : accumulated haversine length in km
+    let segStart  = el.nodes[0];
+    let segCoords = nodeCoords[segStart] ? [nodeCoords[segStart]] : [];
+    let segLength = 0;
+ 
+    for (let i = 1; i < el.nodes.length; i++) {
+      const prevId = el.nodes[i - 1];
+      const currId = el.nodes[i];
+ 
+      const prevCoord = nodeCoords[prevId];
+      const currCoord = nodeCoords[currId];
+ 
+      // Skip sub-segments whose nodes are missing from the coordinate map
+      // (can happen when the Overpass query clips at the bbox boundary)
+      if (!prevCoord || !currCoord) {
+        // If we have a partial segment and hit a gap, discard it and restart
+        if (intersectionNodes.has(currId) && currCoord) {
+          segStart  = currId;
+          segCoords = [currCoord];
+          segLength = 0;
+        }
+        continue;
+      }
+ 
+      // Accumulate sub-segment
+      const subLength = haversineDistance(
+        prevCoord[1], prevCoord[0],
+        currCoord[1], currCoord[0]
+      );
+      segLength += subLength;
+      segCoords.push(currCoord);
+ 
+      // When we reach an intersection node, emit the simplified edge
+      if (intersectionNodes.has(currId)) {
+        if (segCoords.length >= 2 && segLength > 0) {
+          const travelTime = (segLength / speed) * 3600; // seconds
+ 
+          // Forward direction: segStart → currId
+          // For oneway="-1" the physical travel goes currId → segStart,
+          // so we swap start/end and reverse the coordinate array.
+          const fwdCoords  = isReversed ? segCoords.slice().reverse() : segCoords.slice();
+          const fwdStart   = isReversed ? currId.toString() : segStart.toString();
+          const fwdEnd     = isReversed ? segStart.toString() : currId.toString();
+ 
+          features_edges.push({
             type: "Feature",
-            geometry: { type: "LineString", coordinates: seg_coords.slice().reverse() },
+            geometry: { type: "LineString", coordinates: fwdCoords },
             properties: {
-              start: end.toString(),
-              end: start.toString(),
-              length: seg_length,
-              travel_time: seg_travel_time,
+              start:        fwdStart,
+              end:          fwdEnd,
+              length:       segLength,
+              travel_time:  travelTime,
               is_attractor: is_attractor
             }
-          };
-          features_edges.push(reverseFeature);
+          });
+ 
+          // Reverse direction for two-way roads
+          if (!isOneWay) {
+            features_edges.push({
+              type: "Feature",
+              geometry: { type: "LineString", coordinates: fwdCoords.slice().reverse() },
+              properties: {
+                start:        fwdEnd,
+                end:          fwdStart,
+                length:       segLength,
+                travel_time:  travelTime,
+                is_attractor: is_attractor
+              }
+            });
+          }
         }
+ 
+        // Reset for the next segment starting at this intersection node
+        segStart  = currId;
+        segCoords = [currCoord];
+        segLength = 0;
       }
     }
   });
-
-  // Create Point features for nodes (for markers or info)
-  let features_nodes = [];
-  for (let nodeId in nodes) {
-    let feature = {
-      type: "Feature",
-      geometry: { type: "Point", coordinates: nodes[nodeId] },
-      properties: { id: nodeId.toString() }
-    };
-    features_nodes.push(feature);
-  }
-
+ 
+  const features_nodes = [];
+  intersectionNodes.forEach(nodeId => {
+    const coord = nodeCoords[nodeId];
+    if (coord) {
+      features_nodes.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: coord },
+        properties: { id: nodeId.toString() }
+      });
+    }
+  });
+ 
+  console.log(`[DiverCity] Graph simplified: ${intersectionNodes.size} intersection nodes, ${features_edges.length} edges`);
+ 
   return {
     type: "FeatureCollection",
     features: features_edges.concat(features_nodes)
   };
-
-
-
 }
 
 
 
 
 
-function handleMapClick(event) {
 
+function handleMapClick(event) {
     if (isRouteComputed) resetRoute();
     let closestNode = findClosestNode(event.latlng);
     if (closestNode) {
@@ -459,7 +597,8 @@ function handleMapClick(event) {
     }
 
     if (selectedNodes.length === 2) {
-        setTimeout(() => computeAndDrawPaths(), 0);
+        updateInfoBoxLoading();
+        setTimeout(() => computeAndDrawPaths(), 50);
     }
 }
 
@@ -779,54 +918,88 @@ function getAttractorStatus(feature) {
 
 
 function createInfoBox() {
-    
     var infoBox = L.DomUtil.create("div", "info-box");
-    infoBox.innerHTML = "<strong>Route Info</strong><br>Click to select origin and destination.";
     document.body.appendChild(infoBox);
 
-    window.updateInfoBox = function (origin, destination, NSP_count, spatialSpread, diverCityScore) {
-        let originCoords = nodes[origin];
-        let destinationCoords = nodes[destination];
-
-        let originLat = originCoords[1];
-        let originLng = originCoords[0];
-        let destinationLat = destinationCoords[1];
-        let destinationLng = destinationCoords[0];
-
-        let distance = haversineDistance(originLat, originLng, destinationLat, destinationLng);
-
-        const highThreshold = 0.6 * k;
-        const lowThreshold = 0.4 * k;
-        let arrowHTML = ''
-
-        console.log(k)
-
-        if (diverCityScore > highThreshold) {
-            arrowHTML = `<span style="color:darkblue">▲</span>`;
-        } else if (diverCityScore < lowThreshold) {
-            arrowHTML = `<span style="color:red">▼</span>`;
-        }
-
+    window.updateInfoBoxDefault = function() {
         infoBox.innerHTML = `
-            <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
-            <strong>Origin:</strong> ${origin} <br>
-            <strong>Destination:</strong> ${destination} <br>
-            <strong>OD Distance:</strong> ${distance.toFixed(2)} km <br>
-            <hr style="margin: 5px 0;">
-            <strong>Near Shortest Routes:</strong> ${NSP_count} <br>
-            <strong>Spatial Spread:</strong> ${spatialSpread.toFixed(2)} <br>
-            <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">
-                DiverCity: ${diverCityScore.toFixed(2)} ${arrowHTML}
+            <div style="font-size: 15px; font-weight: bold; margin-bottom: 6px;">Route Info</div>
+            <div style="font-size: 12px; color: #555; line-height: 1.6;">
+                🖱️ <b>Click</b> two points to set origin and destination.<br>
+                🗺️ <b>Load a new city</b> using the button on the top left.
             </div>
         `;
     };
 
-    window.updateInfoBoxDefault = function() {
+    window.updateInfoBoxLoading = function() {
+    infoBox.innerHTML = `
+        <div style="font-size: 15px; font-weight: bold; margin-bottom: 8px;">Route Info</div>
+        <div style="font-size: 12px; color: #555; line-height: 2; text-align: center; padding: 10px 0;">
+            <div style="font-size: 20px; margin-bottom: 6px;">⏳</div>
+            <b>Computing routes…</b><br>
+            <span style="font-size: 11px;">This may take a few seconds</span>
+        </div>
+    `;
+};
+
+    window.updateInfoBox = function (origin, destination, NSP_count, spatialSpread, prdScore) {
+        const originCoords = nodes[origin];
+        const destCoords   = nodes[destination];
+
+        const originLat = originCoords[1], originLng = originCoords[0];
+        const destLat   = destCoords[1],   destLng   = destCoords[0];
+
+        const distance = haversineDistance(originLat, originLng, destLat, destLng);
+
+        // Colore e label qualitativa del PRD score
+        const highThreshold = 0.6 * k;
+        const lowThreshold  = 0.4 * k;
+        let scoreColor, scoreLabel;
+        if (prdScore > highThreshold) {
+            scoreColor = '#0b4bd6'; scoreLabel = 'High';
+        } else if (prdScore < lowThreshold) {
+            scoreColor = '#d3202f'; scoreLabel = 'Low';
+        } else {
+            scoreColor = '#333';   scoreLabel = 'Medium';
+        }
+
         infoBox.innerHTML = `
-            <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">Route Info</div>
-            Click to select origin and destination.
+            <div style="font-size: 15px; font-weight: bold; margin-bottom: 8px;">Route Info</div>
+
+            <div style="font-size: 12px; color: #555; margin-bottom: 2px;">Origin</div>
+            <div style="font-size: 12px; margin-bottom: 6px;">
+                ${originLat.toFixed(5)}, ${originLng.toFixed(5)}
+            </div>
+
+            <div style="font-size: 12px; color: #555; margin-bottom: 2px;">Destination</div>
+            <div style="font-size: 12px; margin-bottom: 6px;">
+                ${destLat.toFixed(5)}, ${destLng.toFixed(5)}
+            </div>
+
+            <div style="font-size: 12px; color: #555; margin-bottom: 2px;">OD Distance</div>
+            <div style="font-size: 12px; margin-bottom: 8px;">${distance.toFixed(2)} km</div>
+
+            <hr style="margin: 6px 0; border: none; border-top: 1px solid #eee;">
+
+            <div style="font-size: 12px; color: #555; margin-bottom: 2px;">Near Shortest Routes</div>
+            <div style="font-size: 12px; margin-bottom: 4px;">${NSP_count}</div>
+
+            <div style="font-size: 12px; color: #555; margin-bottom: 2px;">Spatial Spread</div>
+            <div style="font-size: 12px; margin-bottom: 8px;">${spatialSpread.toFixed(3)}</div>
+
+            <hr style="margin: 6px 0; border: none; border-top: 1px solid #eee;">
+
+            <div style="font-weight: bold; font-size: 11px; color: #555; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
+                Potential Route Diversification
+            </div>
+            <div style="font-size: 22px; font-weight: bold; color: ${scoreColor};">
+                ${prdScore.toFixed(2)}
+                <span style="font-size: 13px; font-weight: normal;">(${scoreLabel})</span>
+            </div>
         `;
     };
+
+    updateInfoBoxDefault();
 }
 
 
@@ -905,6 +1078,61 @@ function createSliders() {
     });
 }
 
+
+function addAboutPanel() {
+    const btn = document.createElement('div');
+    btn.className = 'about-btn';
+    btn.textContent = 'About the measure ℹ️';
+    document.body.appendChild(btn);
+
+    // Modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'about-modal-overlay';
+    overlay.style.display = 'none';
+    overlay.innerHTML = `
+        <div class="about-modal">
+            <span class="about-modal-close" id="about-close">✕</span>
+            <h2>Potential Route Diversification</h2>
+            <p>
+                Measures how effectively a road network supports multiple 
+                efficient and spatially distinct routes between an origin and destination.
+            </p>
+            <div class="about-formula">D(u,v) = S(NSR) ⋅ |NSR|</div>
+            <p>
+                <b>|NSR|</b> - number of <i>near-shortest routes</i>: paths whose 
+                travel time is within <b>ε%</b> of the fastest route, generated 
+                via path penalization with factor <b>p</b>.
+            </p>
+            <p>
+                <b>S(NSR)</b> - spatial spread: <span style="font-family:monospace">1 − J(NSR)</span>, 
+                where J is the average weighted Jaccard similarity among route pairs. 
+                High spread means routes are spatially distinct.
+            </p>
+            <p>
+            D(u,v) ranges in <b>[0, k]</b>. Values close to k indicate high diversification, with many near-shortest routes that overlap little in space.
+
+            </p>
+            <a href="https://github.com/GiulianoCornacchia/DiverCity" 
+               target="_blank" class="about-link">📄 Read the paper</a>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Apri
+    btn.addEventListener('click', () => {
+        overlay.style.display = 'flex';
+    });
+
+    // Chiudi con X
+    document.getElementById('about-close').addEventListener('click', () => {
+        overlay.style.display = 'none';
+    });
+
+    // Chiudi cliccando fuori dal modal
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.style.display = 'none';
+    });
+}
 
 
 function addLegend() {
@@ -1113,16 +1341,11 @@ function parseMaxSpeed(maxspeed) {
 
 
 function updateRoutesOnParameterChange() {
-    // Check if two nodes are selected
     if (selectedNodes.length === 2) {
-        console.log("Recomputing routes with updated parameters...");
-
-        // Clear existing routes
         pathLayers.forEach(layer => map.removeLayer(layer));
         pathLayers = [];
-
-        // Recompute and redraw paths with the new parameter values
-        computeAndDrawPaths();
+        updateInfoBoxLoading();
+        setTimeout(() => computeAndDrawPaths(), 50);
     }
 }
 
