@@ -955,15 +955,16 @@ function createInfoBox() {
         const distance = haversineDistance(originLat, originLng, destLat, destLng);
 
         // Colore e label qualitativa del PRD score
-        const highThreshold = 0.6 * k;
-        const lowThreshold  = 0.4 * k;
-        let scoreColor, scoreLabel;
-        if (prdScore > highThreshold) {
-            scoreColor = '#0b4bd6'; scoreLabel = 'High';
-        } else if (prdScore < lowThreshold) {
-            scoreColor = '#d3202f'; scoreLabel = 'Low';
+        const thresholds = [0.40, 0.55, 0.70, 0.82].map(t => t * k);
+        const labels = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
+        const colors = ['#d3202f', '#e86c00', '#888', '#1a7a3f', '#0b4bd6'];
+
+        let scoreLabel, scoreColor;
+        const idx = thresholds.findIndex(t => prdScore < t);
+        if (idx === -1) {
+            scoreLabel = labels[4]; scoreColor = colors[4];
         } else {
-            scoreColor = '#333';   scoreLabel = 'Medium';
+            scoreLabel = labels[idx]; scoreColor = colors[idx];
         }
 
         infoBox.innerHTML = `
