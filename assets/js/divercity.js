@@ -1116,8 +1116,10 @@ function addAboutPanel() {
             D(u,v) ranges in <b>[0, k]</b>. Values close to k indicate high diversification, with many near-shortest routes that overlap little in space.
 
             </p>
-            <a href="https://github.com/GiulianoCornacchia/DiverCity" 
-               target="_blank" class="about-link">📄 Read the paper</a>
+            <div style="margin-top: 10px; display: flex; gap: 12px;">
+            <a href="https://arxiv.org/abs/2510.02582" target="_blank" class="about-link">📄 Paper (pre-print)</a>
+            <a href="https://github.com/GiulianoCornacchia/DiverCity" target="_blank" class="about-link">💻 Code</a>
+        </div>
         </div>
     `;
     document.body.appendChild(overlay);
