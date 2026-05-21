@@ -140,6 +140,7 @@ function addDrawControl() {
     const btn = document.createElement('div');
     btn.className = 'load-city-btn';
     document.getElementById('map').appendChild(btn);
+    L.DomEvent.disableClickPropagation(btn);
 
     function setStep(s) {
         step = s;
@@ -152,6 +153,7 @@ function addDrawControl() {
                 </div>`;
             btn.classList.remove('drawing');
         } else if (s === 1) {
+            resetRoute();
             btn.innerHTML = `
                 <div class="btn-icon">🔍</div>
                 <div class="btn-text">
