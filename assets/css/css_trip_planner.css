@@ -65,6 +65,7 @@
     color: #333;
     min-width: 180px;
     max-width: 300px;
+    width: 300px;
     z-index: 1000; /* Ensure it stays on top */
 }
 
@@ -81,7 +82,7 @@
     font-size: 14px;
     color: #333;
     min-width: 180px;
-    max-width: 250px;
+    max-width: 300px;
     z-index: 1000;
     overflow: visible;
     transition: max-height 0.3s ease;
@@ -104,7 +105,7 @@
 /* Collapsible Content */
 .slider-content {
     display: block;
-    max-height: 230px;
+    max-height: 300px;
     overflow: visible;
     padding-top: 10px;
     transition: max-height 0.3s ease;

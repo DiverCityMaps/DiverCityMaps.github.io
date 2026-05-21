@@ -5,6 +5,7 @@ let map, graph = {}, nodes = {}, edgeLayer, layerControl;
 let selectedNodes = [], nodeMarkers = [], pathLayers = [];
 let isRouteComputed = false;
 let k = 5, p = 0.1, epsilon = 0.3, max_it = 100;
+let attractorSpeedMultiplier = 1.0;
 
 
 // Initialize overlayLayers as an empty object
@@ -80,10 +81,11 @@ function initializeLayers() {
         filter: filterLineString
     }).addTo(map);
 
+
     let baseLayers = {
-        "Roads Data": edgeLayer,
-        "OSM": osmLayer
-    };
+    "Road Network": edgeLayer,
+    "Street Map": osmLayer
+};
 
     // Ensure overlayLayers is defined and used correctly
     overlayLayers = {};  // Initialize or clear existing layers
@@ -694,10 +696,10 @@ function logDiverCity(paths, costList, edgeWeights) {
 
 
 function computeKAlternativePaths(graph, startNode, endNode, k, p, max_it=50) {
-     let allPaths = new Set();
-      let pathCosts = [];
-      let tempGraph = deepCopyGraph(graph);
-      let iterations = 0;
+    let allPaths = new Set();
+    let pathCosts = [];
+    let tempGraph = deepCopyGraph(graph, attractorSpeedMultiplier);
+    let iterations = 0;
 
     while (allPaths.size < k && iterations < max_it) {
         let pathEdges = dijkstra(tempGraph, startNode, endNode);
@@ -710,7 +712,15 @@ function computeKAlternativePaths(graph, startNode, endNode, k, p, max_it=50) {
             allPaths.add(pathString);
 
             // Compute total path cost
-            let pathCost = pathEdges.reduce((sum, edge) => sum + edge.properties.travel_time, 0);
+            //let pathCost = pathEdges.reduce((sum, edge) => sum + edge.properties.travel_time, 0);
+            let pathCost = pathEdges.reduce((sum, edge) => {
+                let cost = edge.properties.travel_time;
+                if (edge.properties.is_attractor === 1) {
+                    cost = cost / attractorSpeedMultiplier;
+                }
+                return sum + cost;
+            }, 0);
+
             pathCosts.push(pathCost);
 
             // Apply penalties to used edges to encourage route diversity
@@ -876,17 +886,19 @@ function dijkstra(graph, start, end) {
 
 
 
-function deepCopyGraph(graph) {
-  const copy = {};
-  for (let node in graph) {
-    // Copy each link object for the node
-    copy[node] = graph[node].map(link => ({
-      node: link.node,
-      weight: link.weight,
-      feature: link.feature  // Assuming you don't need a deep copy of feature
-    }));
-  }
-  return copy;
+
+function deepCopyGraph(graph, attractorSpeedMultiplier = 1.0) {
+    const copy = {};
+    for (let node in graph) {
+        copy[node] = graph[node].map(link => {
+            let weight = link.weight;
+            if (link.is_attractor === 1) {
+                weight = weight / attractorSpeedMultiplier;
+            }
+            return { node: link.node, weight, is_attractor: link.is_attractor, feature: link.feature };
+        });
+    }
+    return copy;
 }
 
 
@@ -1035,6 +1047,13 @@ function createSliders() {
             </label>
             <input type="range" id="slider-max-it" min="10" max="300" step="10" value="${max_it}">
             <br>
+            <hr style="margin: 8px 0; border: none; border-top: 1px solid #eee;">
+            <label class="tooltip" for="slider-attractor-reduction">
+                Attractor speed: <span id="value-attractor-reduction">100%</span>
+                <span class="tooltiptext">Reduces speed limits on motorways and trunk roads</span>
+            </label>
+            <input type="range" id="slider-attractor-reduction" min="0" max="2.0" step="0.1" value="1.0">
+            <br>
         </div>
     `;
     document.body.appendChild(sliderContainer);
@@ -1076,6 +1095,17 @@ function createSliders() {
     document.getElementById("slider-max-it").addEventListener("change", function() {
         updateRoutesOnParameterChange();
     });
+
+    document.getElementById("slider-attractor-reduction").addEventListener("input", function() {
+    attractorSpeedMultiplier = parseFloat(this.value);
+    document.getElementById("value-attractor-reduction").innerText =
+        Math.round(attractorSpeedMultiplier * 100) + "%";
+    });
+
+    document.getElementById("slider-attractor-reduction").addEventListener("change", function() {
+        updateRoutesOnParameterChange();
+    });
+
 }
 
 
@@ -1295,6 +1325,7 @@ function computeAndDrawPaths() {
                 edgeWeights[e] = f.properties.length;
             }
         });
+
 
         // Metrics
         const { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
