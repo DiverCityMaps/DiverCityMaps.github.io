@@ -983,6 +983,19 @@ function createInfoBox() {
                 ${originLat.toFixed(5)}, ${originLng.toFixed(5)}
             </div>
 
+
+            <div style="text-align: left; margin: 4px 0;">
+                <span id="swap-btn" style="
+                    cursor: pointer;
+                    font-size: 12px;
+                    color: #0b4bd6;
+                    padding: 2px 8px;
+                    border: 1px solid #0b4bd6;
+                    border-radius: 10px;
+                    user-select: none;
+                ">⇅ swap</span>
+            </div>
+
             <div style="font-size: 12px; color: #555; margin-bottom: 2px;">Destination</div>
             <div style="font-size: 12px; margin-bottom: 6px;">
                 ${destLat.toFixed(5)}, ${destLng.toFixed(5)}
@@ -1009,6 +1022,15 @@ function createInfoBox() {
                 <span style="font-size: 13px; font-weight: normal;">(${scoreLabel})</span>
             </div>
         `;
+
+
+        document.getElementById("swap-btn").addEventListener("click", () => {
+        selectedNodes.reverse();
+        highlightNodes();
+        updateInfoBoxLoading();
+        setTimeout(() => computeAndDrawPaths(), 50);
+        });
+
     };
 
     updateInfoBoxDefault();
