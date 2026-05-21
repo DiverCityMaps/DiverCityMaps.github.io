@@ -824,59 +824,55 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
 /* Graph Utils */
 
 function dijkstra(graph, start, end) {
-  // Convert start and end to strings for consistency
-  start = start.toString();
-  end = end.toString();
+    start = start.toString();
+    end = end.toString();
 
-  let distances = {};
-  let previous = {};
-  let pq = new Heap((a, b) => a.priority - b.priority); // Min Heap
-  let edgePath = {};
+    const distances = {};
+    const previous = {};
+    const edgePath = {};
+    const visited = new Set();
+    const pq = new Heap((a, b) => a.priority - b.priority);
 
-  // Initialize distances and previous for every node in the graph
-  for (let node in graph) {
-    distances[node] = Infinity;
-    previous[node] = null;
-  }
-  distances[start] = 0;
-  pq.push({ node: start, priority: 0 });
+    // Lazy init: solo il nodo di partenza
+    distances[start] = 0;
+    pq.push({ node: start, priority: 0 });
 
-  while (!pq.empty()) {
-    let { node: minNode } = pq.pop();
+    while (!pq.empty()) {
+        const { node: minNode, priority } = pq.pop();
 
-    // Check if minNode exists in the graph
-    if (!graph[minNode]) {
-      console.error("Node not found in graph:", minNode);
-      continue;
+        // Scarta entry stale
+        if (priority > (distances[minNode] ?? Infinity)) continue;
+        // Scarta nodi già processati
+        if (visited.has(minNode)) continue;
+        visited.add(minNode);
+
+        if (minNode === end) break;
+
+        if (!graph[minNode]) continue;
+
+        for (const neighbor of graph[minNode]) {
+            const neighborId = neighbor.node.toString();
+            if (visited.has(neighborId)) continue;
+
+            const alt = distances[minNode] + neighbor.weight;
+            if (alt < (distances[neighborId] ?? Infinity)) {
+                distances[neighborId] = alt;
+                previous[neighborId] = minNode;
+                edgePath[neighborId] = neighbor.feature;
+                pq.push({ node: neighborId, priority: alt });
+            }
+        }
     }
 
-    if (minNode === end) break;
-
-    for (let neighbor of graph[minNode]) {
-      let alt = distances[minNode] + neighbor.weight;
-      // Ensure neighbor.node is a string
-      let neighborId = neighbor.node.toString();
-      if (alt < distances[neighborId]) {
-        distances[neighborId] = alt;
-        previous[neighborId] = minNode;
-        pq.push({ node: neighborId, priority: alt });
-        edgePath[neighborId] = neighbor.feature;
-      }
+    // Ricostruisci il path
+    const path = [];
+    let current = end;
+    while (current) {
+        if (edgePath[current]) path.unshift(edgePath[current]);
+        current = previous[current];
     }
-  }
-
-  // Build the path by walking backward from the end node
-  let path = [];
-  let current = end;
-  while (current) {
-    if (edgePath[current]) {
-      path.unshift(edgePath[current]);
-    }
-    current = previous[current];
-  }
-  return path;
+    return path;
 }
-
 
 
 
