@@ -1171,7 +1171,7 @@ function addAboutPanel() {
             <a href="https://github.com/GiulianoCornacchia/DiverCity" target="_blank" class="about-link">💻 Code</a>
           </div>
           <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid #eee; font-size: 11px; color: #aaa;">
-              Dashboard designed by <a href="www.linkedin.com/in/giuliano-cornacchia/" target="_blank" style="color: #aaa; text-decoration: underline;">Giuliano Cornacchia</a>
+              Dashboard designed by <a href="https://linkedin.com/in/giuliano-cornacchia/" target="_blank" style="color: #aaa; text-decoration: underline;">Giuliano Cornacchia</a>
           </div>
         </div>
     `;
