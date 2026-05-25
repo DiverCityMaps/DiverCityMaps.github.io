@@ -183,9 +183,10 @@ function addDrawControl() {
         }
     }
 
-    btn.addEventListener('click', () => {
-        if (step === 0) setStep(1);
-        else if (step === 1) setStep(2);
+    btn.addEventListener('click', (e) => {
+    L.DomEvent.stopPropagation(e);
+    if (step === 0) setStep(1);
+    else if (step === 1) setStep(2);
     });
 
     map.on('draw:created', () => {
