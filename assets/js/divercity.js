@@ -325,7 +325,7 @@ function addDrawControl() {
                         <label style="font-size:11px; color:#555;">
                             Radius: <b><span id="radius-value">${radius}</span> km</b>
                         </label>
-                        <input type="range" id="radius-slider" min="5" max="30" step="1" value="${radius}"
+                        <input type="range" id="radius-slider" min="1" max="30" step="1" value="${radius}"
                             style="width:100%; margin: 4px 0 10px 0;">
                         <div style="display:flex; gap:6px;">
                             <button id="btn-download-radius" style="
