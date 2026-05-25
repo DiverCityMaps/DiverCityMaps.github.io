@@ -154,20 +154,68 @@ function addDrawControl() {
     document.getElementById('map').appendChild(btn);
     L.DomEvent.disableClickPropagation(btn);
 
-    function setStep(s) {
+    function handleCitySearch() {
+            const query = document.getElementById('city-search-input').value.trim();
+            console.log("Query:", query);
+            if (!query) return;
+
+            showMapLoader("Searching...");
+
+            searchCity(query)
+                .then(({ lat, lng, name }) => {
+                    console.log("Found:", lat, lng, name);
+                    hideMapLoader();
+                    setStep('search', { lat, lng, name });
+                })
+                .catch(err => {
+                    console.error("Error:", err);
+                    hideMapLoader();
+                    showMapLoader("City not found. Try again.", "error");
+                });
+        }
+
+    function setStep(s, opts = {}) {
         step = s;
         if (s === 0) {
-            document.querySelector('.info-box').style.top = '140px';
             btn.innerHTML = `
-                <div class="btn-icon">🗺️</div>
-                <div class="btn-text">
-                    <div class="btn-title">Load a new city</div>
-                    <div class="btn-subtitle">Draw a rectangle on the map</div>
+                <div class="btn-text" style="width:100%">
+                    <div class="btn-title" style="margin-bottom:8px;">🗺️ Load a new city</div>
+                    <div style="display:flex; gap:6px; margin-bottom:8px;">
+                        <input id="city-search-input" type="text" placeholder="Search a city..."
+                            style="flex:1; padding:6px 8px; border:1px solid #ccc;
+                            border-radius:6px; font-size:12px; outline:none;"/>
+                        <button id="city-search-btn" style="
+                            padding:6px 10px; background:#0b4bd6; color:white;
+                            border:none; border-radius:6px; cursor:pointer; font-size:13px;">
+                            🔍
+                        </button>
+                    </div>
+                    <div style="text-align:center; font-size:11px; color:#aaa; margin-bottom:6px;">or</div>
+                    <button id="btn-draw-area" style="
+                        width:100%; padding:6px; background:#f0f0f0; color:#333;
+                        border:1px solid #ddd; border-radius:6px; cursor:pointer;
+                        font-size:12px;">
+                        ✏️ Draw a custom area
+                    </button>
                 </div>`;
             btn.classList.remove('drawing');
 
+            // Search
+            document.getElementById('city-search-btn').addEventListener('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                handleCitySearch();
+            });
+            document.getElementById('city-search-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') handleCitySearch();
+            });
+            L.DomEvent.disableClickPropagation(document.getElementById('city-search-input'));
+
+            // Draw
+            document.getElementById('btn-draw-area').addEventListener('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                setStep(1);
+            });
         } else if (s === 1) {
-            document.querySelector('.info-box').style.top = '220px';
             resetRoute();
             btn.innerHTML = `
                 <div class="btn-text" style="width:100%">
@@ -226,12 +274,103 @@ function addDrawControl() {
                 </div>`;
             btn.classList.add('drawing');
             drawButton.click();
-        }
+            } else if (s === 'search') {
+                const { lat, lng, name } = opts;
+                let radius = 15;
+
+                resetRoute();
+                if (!map.hasLayer(osmLayer)) {
+                    if (map.hasLayer(edgeLayer)) {
+                        previousBaseLayer = edgeLayer;
+                        map.removeLayer(edgeLayer);
+                    }
+                    map.addLayer(osmLayer);
+                }
+
+                map.setView([lat, lng], 11);
+
+                // Marker centro città
+                let centerMarker = L.circleMarker([lat, lng], {
+                    radius: 6, color: '#333', fillColor: '#333',
+                    fillOpacity: 1, weight: 2
+                }).addTo(map);
+
+                // Cerchio raggio
+                let radiusCircle = L.circle([lat, lng], {
+                    radius: radius * 1000,
+                    color: '#0b4bd6', fillColor: '#0b4bd6',
+                    fillOpacity: 0.1, weight: 2
+                }).addTo(map);
+
+                btn.innerHTML = `
+                    <div class="btn-text" style="width:100%">
+                        <div class="btn-title" style="margin-bottom:6px;">📍 ${name}</div>
+                        <hr style="margin:0 0 8px 0; border:none; border-top:1px solid #eee;">
+                        <label style="font-size:11px; color:#555;">
+                            Radius: <b><span id="radius-value">${radius}</span> km</b>
+                        </label>
+                        <input type="range" id="radius-slider" min="5" max="30" step="1" value="${radius}"
+                            style="width:100%; margin: 4px 0 10px 0;">
+                        <div style="display:flex; gap:6px;">
+                            <button id="btn-download-radius" style="
+                                flex:1; padding:6px; background:#0b4bd6; color:white;
+                                border:none; border-radius:6px; cursor:pointer;
+                                font-size:12px; font-weight:bold;">
+                                ⬇️ Download
+                            </button>
+                            <button id="btn-cancel-search" style="
+                                padding:6px 10px; background:#f0f0f0; color:#333;
+                                border:none; border-radius:6px; cursor:pointer;
+                                font-size:12px;">✕
+                            </button>
+                        </div>
+                    </div>`;
+
+                document.getElementById('radius-slider').addEventListener('input', (e) => {
+                    radius = parseInt(e.target.value);
+                    document.getElementById('radius-value').textContent = radius;
+                    radiusCircle.setRadius(radius * 1000);
+                    //map.fitBounds(radiusCircle.getBounds());
+                });
+
+                document.getElementById('btn-download-radius').addEventListener('click', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    map.removeLayer(centerMarker);
+                    map.removeLayer(radiusCircle);
+                    showMapLoader("Downloading road network…");
+                    downloadRoadNetworkByRadius(lat, lng, radius)
+                        .then(geojsonData => {
+                            RoadsData = geojsonData;
+                            initializeGraphNetwork(RoadsData);
+                            selectedNodes = [];
+                            highlightNodes();
+                            hideMapLoader();
+                            setStep(0);
+                        })
+                        .catch(error => {
+                            hideMapLoader();
+                            showMapLoader("Download failed. Try a smaller area.", "error");
+                            console.error(error);
+                        });
+                });
+
+                document.getElementById('btn-cancel-search').addEventListener('click', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    map.removeLayer(centerMarker);
+                    map.removeLayer(radiusCircle);
+                    if (map.hasLayer(osmLayer) && previousBaseLayer) {
+                        map.removeLayer(osmLayer);
+                        map.addLayer(previousBaseLayer);
+                    }
+                    setStep(0);
+                });
+            }
+
     }
 
     btn.addEventListener('click', (e) => {
     L.DomEvent.stopPropagation(e);
-    if (step === 0) setStep(1);
+    //if (step === 0) setStep(1);
     });
 
     map.on('draw:created', () => {
@@ -301,41 +440,33 @@ function buildGraph(roadsData) {
     return { graph, nodes };
 }
 
+
 function initializeGraphNetwork(RoadsData) {
-
-  ensureCustomPanes(map);
-
-  // Rebuild the graph and node data using your buildGraph() function
-  let updatedGraph = buildGraph(RoadsData);
-  graph = updatedGraph.graph;
-  nodes = updatedGraph.nodes;
-
-  // Optionally, clean the graph if you have a cleanGraph() function
-  if (typeof cleanGraph === "function") {
-    graph = cleanGraph(graph, nodes);
-  }
-
-  // Remove the existing edgeLayer from the map if it exists
-  if (edgeLayer) {
-    map.removeLayer(edgeLayer);
-  }
-
-  // Create a new GeoJSON layer for the updated road network data
+    ensureCustomPanes(map);
+    
+    let updatedGraph = buildGraph(RoadsData);
+    graph = updatedGraph.graph;
+    nodes = updatedGraph.nodes;
+    
+    if (typeof cleanGraph === "function") {
+        graph = cleanGraph(graph, nodes);
+    }
+    
+    if (edgeLayer) map.removeLayer(edgeLayer);
+    
+    // Rimuovi OSM e switcha a Roads Data ← aggiungi questo
+    if (map.hasLayer(osmLayer)) map.removeLayer(osmLayer);
+    
     edgeLayer = L.geoJSON(RoadsData, {
         pane: 'roads',
         style: styleRoads,
         filter: filterLineString,
-        interactive: false  // prevents blocking clicks
+        interactive: false
     }).addTo(map);
-
-  // Reset overlayLayers (if you use additional overlays)
-  overlayLayers = {};
-
-  // Update the layer control on the map with the new layers
-  updateLayerControl();
-
-  // Adjust the map view to fit the bounds of the new road network
-  map.fitBounds(edgeLayer.getBounds());
+    
+    overlayLayers = {};
+    updateLayerControl();
+    map.fitBounds(edgeLayer.getBounds());
 }
 
 
@@ -434,21 +565,39 @@ function hideMapLoader() {
 }
 
 
-function downloadRoadNetwork(bbox) {
-
-  const [s, w, n, e] = bbox.map(v => +v.toFixed(5));
-  const query = `[out:json][timeout:120];(way["highway"~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|unclassified|residential)$"]["access"!="no"]["motor_vehicle"!="no"](${s},${w},${n},${e}););out body;>;out skel qt;`;  
-  return fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: "data=" + encodeURIComponent(query)
-  })
-    .then(response => {
-      if (!response.ok) throw new Error("Network response was not ok");
-      return response.json();
-    })
-    .then(osmData => transformOSMDataToRoadsData(osmData));
+function buildOverpassQuery(filter) {
+    const highways = `"highway"~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|unclassified|residential)$"`;
+    const access = `["access"!="no"]["motor_vehicle"!="no"]`;
+    return `[out:json][timeout:120];(way[${highways}]${access}${filter};);out body;>;out skel qt;`;
 }
+
+function fetchOverpass(query) {
+    return fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "data=" + encodeURIComponent(query)
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`Overpass error: HTTP ${response.status}`);
+        return response.json();
+    })
+    .catch(error => {
+        console.error("Overpass fetch failed:", error.message);
+        throw error;
+    });
+}
+
+function downloadRoadNetwork(bbox) {
+    const [s, w, n, e] = bbox.map(v => +v.toFixed(5));
+    return fetchOverpass(buildOverpassQuery(`(${s},${w},${n},${e})`))
+        .then(osmData => transformOSMDataToRoadsData(osmData));
+}
+
+function downloadRoadNetworkByRadius(lat, lng, radiusKm) {
+    return fetchOverpass(buildOverpassQuery(`(around:${radiusKm * 1000},${lat},${lng})`))
+        .then(osmData => transformOSMDataToRoadsData(osmData));
+}
+
 
 
 function simplifyCoords(coords, tolerance = 0.00005) {
@@ -1504,4 +1653,29 @@ function debugNetworkSize(roadsData, nodes) {
     console.log(`Total coords: ${totalCoords}`);
     console.log(`Avg coords per edge: ${(totalCoords/edges.length).toFixed(1)}`);
     console.log(`Data size: ${(sizeBytes/1024/1024).toFixed(2)} MB`);
+}
+
+
+
+
+
+
+function searchCity(query) {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+    return fetch(url, {
+        headers: { 
+            'Accept-Language': 'en',
+            'User-Agent': 'DiverCity/1.0'
+        }
+    })
+    .then(response => response.json())
+    .then(results => {
+        console.log("Nominatim results:", results); // ← debug
+        if (results.length === 0) throw new Error("City not found");
+        return {
+            lat: parseFloat(results[0].lat),
+            lng: parseFloat(results[0].lon),
+            name: results[0].display_name.split(',').slice(0, 2).join(',')
+        };
+    });
 }

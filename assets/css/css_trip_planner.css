@@ -54,7 +54,7 @@
 /* Styles for Info Box */
 .info-box {
     position: absolute;
-    top: 140px; /* Adjust position below zoom controls */
+    top: 280px; /* Adjust position below zoom controls */
     left: 10px;
     padding: 10px 15px;
     background: rgba(255, 255, 255, 0.9);
