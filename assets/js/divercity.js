@@ -122,7 +122,10 @@ function addDrawControl() {
   // Initialize the draw control with only the rectangle tool enabled
   let drawControl = new L.Control.Draw({
     draw: {
-      rectangle: true, // Enable rectangle drawing
+      rectangle: {
+                    showArea: true,
+                    metric: true
+        },
       polygon: false,
       polyline: false,
       circle: false,
@@ -134,6 +137,13 @@ function addDrawControl() {
   map.addControl(drawControl);
 
   setTimeout(() => {
+
+    // Override area display to always use km²
+    L.GeometryUtil.readableArea = function(area) {
+        return (area / 1000000).toFixed(2) + ' km²';
+    };
+
+    
     const drawButton = document.querySelector('.leaflet-draw-draw-rectangle');
     if (!drawButton) return;
 
