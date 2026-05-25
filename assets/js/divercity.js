@@ -147,6 +147,7 @@ function addDrawControl() {
     function setStep(s) {
         step = s;
         if (s === 0) {
+            document.querySelector('.info-box').style.top = '140px';
             btn.innerHTML = `
                 <div class="btn-icon">🗺️</div>
                 <div class="btn-text">
@@ -154,15 +155,35 @@ function addDrawControl() {
                     <div class="btn-subtitle">Draw a rectangle on the map</div>
                 </div>`;
             btn.classList.remove('drawing');
+
         } else if (s === 1) {
+            document.querySelector('.info-box').style.top = '220px';
             resetRoute();
             btn.innerHTML = `
-                <div class="btn-icon">🔍</div>
-                <div class="btn-text">
-                    <div class="btn-title">Navigate to your city</div>
-                    <div class="btn-subtitle">Then click here to draw</div>
+                <div class="btn-text" style="width:100%">
+                    <div class="btn-title" style="margin-bottom:8px;">🗺️ Load a new city</div>
+                    <hr style="margin:0 0 8px 0; border:none; border-top:1px solid #eee;">
+                    <div style="font-size:11px; color:#555; margin-bottom:10px;">
+                        1. Navigate to your city using the map<br>
+                        2. Click <b>Start drawing</b> to select the area
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button id="btn-start-draw" style="
+                            flex:1; padding:6px; background:#0b4bd6; color:white;
+                            border:none; border-radius:6px; cursor:pointer;
+                            font-size:12px; font-weight:bold;">
+                            ✏️ Start drawing
+                        </button>
+                        <button id="btn-cancel" style="
+                            padding:6px 10px; background:#f0f0f0; color:#333;
+                            border:none; border-radius:6px; cursor:pointer;
+                            font-size:12px;">
+                            ✕
+                        </button>
+                    </div>
                 </div>`;
             btn.classList.remove('drawing');
+
             if (!map.hasLayer(osmLayer)) {
                 if (map.hasLayer(edgeLayer)) {
                     previousBaseLayer = edgeLayer;
@@ -170,6 +191,21 @@ function addDrawControl() {
                 }
                 map.addLayer(osmLayer);
             }
+
+            // Listener bottoni interni
+            document.getElementById('btn-start-draw').addEventListener('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                setStep(2);
+            });
+            document.getElementById('btn-cancel').addEventListener('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                if (map.hasLayer(osmLayer) && previousBaseLayer) {
+                    map.removeLayer(osmLayer);
+                    map.addLayer(previousBaseLayer);
+                }
+                setStep(0);
+            });
+
         } else if (s === 2) {
             map.off('click', handleMapClick);
             btn.innerHTML = `
@@ -186,7 +222,6 @@ function addDrawControl() {
     btn.addEventListener('click', (e) => {
     L.DomEvent.stopPropagation(e);
     if (step === 0) setStep(1);
-    else if (step === 1) setStep(2);
     });
 
     map.on('draw:created', () => {
