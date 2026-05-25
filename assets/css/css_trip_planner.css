@@ -205,7 +205,7 @@
 
 .leaflet-container {
   background: #FCFCFC !important;
-  outline-offset: 1px;
+  outline: none !important;
 }
 
 

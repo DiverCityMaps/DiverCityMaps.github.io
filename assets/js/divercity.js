@@ -39,7 +39,8 @@ function initializeMap() {
         zoomDelta: 0.5,
         maxZoom: 22,
         minZoom: 1,
-        layers: []
+        layers: [],
+        preferCanvas: true
     });
 
     initializeLayers();
@@ -248,8 +249,8 @@ function buildGraph(roadsData) {
         }
     });
 
-    console.log("**** # nodes")
-    console.log(Object.keys(nodes).length)
+
+    debugNetworkSize(roadsData, nodes);
 
     return { graph, nodes };
 }
@@ -1451,4 +1452,19 @@ function ensureCustomPanes(map) {
         map.createPane('markers');
         map.getPane('markers').style.zIndex = 700;
     }
+}
+
+
+
+function debugNetworkSize(roadsData, nodes) {
+    const edges = roadsData.features.filter(f => f.geometry.type === "LineString");
+    const totalCoords = edges.reduce((sum, f) => sum + f.geometry.coordinates.length, 0);
+    const sizeBytes = new TextEncoder().encode(JSON.stringify(roadsData)).length;
+    
+    console.log(`--- Network Size Debug ---`);
+    console.log(`Edges: ${edges.length}`);
+    console.log(`Nodes: ${Object.keys(nodes).length}`);
+    console.log(`Total coords: ${totalCoords}`);
+    console.log(`Avg coords per edge: ${(totalCoords/edges.length).toFixed(1)}`);
+    console.log(`Data size: ${(sizeBytes/1024/1024).toFixed(2)} MB`);
 }
