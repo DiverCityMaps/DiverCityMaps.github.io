@@ -4,8 +4,9 @@
 let map, graph = {}, nodes = {}, edgeLayer, layerControl;
 let selectedNodes = [], nodeMarkers = [], pathLayers = [];
 let isRouteComputed = false;
-let k = 5, p = 0.1, epsilon = 0.3, max_it = 100;
+let k = 5, p = 0.1, epsilon = 0.3, max_it = 25;
 let attractorSpeedMultiplier = 1.0;
+let isComputing = false;
 
 
 // Initialize overlayLayers as an empty object
@@ -596,6 +597,7 @@ function transformOSMDataToRoadsData(osmData) {
 
 
 function handleMapClick(event) {
+    if (isComputing) return;
     if (isRouteComputed) resetRoute();
     let closestNode = findClosestNode(event.latlng);
     if (closestNode) {
@@ -604,6 +606,7 @@ function handleMapClick(event) {
     }
 
     if (selectedNodes.length === 2) {
+        isComputing = true;
         updateInfoBoxLoading();
         setTimeout(() => computeAndDrawPaths(), 50);
     }
@@ -1333,7 +1336,6 @@ function highlightNodes() {
 
 
 function computeAndDrawPaths() {
-
    
         // Compute K alternative paths
         const { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it);
@@ -1356,6 +1358,7 @@ function computeAndDrawPaths() {
         updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
 
         isRouteComputed = true;
+        isComputing = false;
   
     }
 
@@ -1410,7 +1413,7 @@ function parseMaxSpeed(maxspeed) {
 
 
 function updateRoutesOnParameterChange() {
-    if (selectedNodes.length === 2) {
+    if (selectedNodes.length === 2 && !isComputing) {
         pathLayers.forEach(layer => map.removeLayer(layer));
         pathLayers = [];
         updateInfoBoxLoading();
