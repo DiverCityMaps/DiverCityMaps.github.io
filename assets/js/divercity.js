@@ -441,6 +441,22 @@ function downloadRoadNetwork(bbox) {
 }
 
 
+function simplifyCoords(coords, tolerance = 0.00005) {
+    if (coords.length <= 2) return coords;
+    const result = [coords[0]];
+    for (let i = 1; i < coords.length - 1; i++) {
+        const [x0, y0] = result[result.length - 1];
+        const [x1, y1] = coords[i];
+        const [x2, y2] = coords[i + 1];
+        const denom = Math.sqrt((y2-y0)**2 + (x2-x0)**2);
+        if (denom === 0) continue;
+        const d = Math.abs((y2-y0)*(x1-x0) - (x2-x0)*(y1-y0)) / denom;
+        if (d > tolerance) result.push(coords[i]);
+    }
+    result.push(coords[coords.length - 1]);
+    return result;
+}
+
 function transformOSMDataToRoadsData(osmData) {
  
   // ------------------------------------------------------------------
@@ -455,10 +471,8 @@ function transformOSMDataToRoadsData(osmData) {
  
   // ------------------------------------------------------------------
   // Step 2: Count how many distinct ways reference each node.
-  //         We use a Set per node to avoid double-counting a node that
-  //         appears multiple times within the same way.
   // ------------------------------------------------------------------
-  const nodeWayCount = {};   // nodeId → number of distinct ways
+  const nodeWayCount = {};
   osmData.elements.forEach(el => {
     if (el.type !== "way" || !el.nodes) return;
     const seen = new Set(el.nodes);
@@ -469,20 +483,12 @@ function transformOSMDataToRoadsData(osmData) {
  
   // ------------------------------------------------------------------
   // Step 3: Identify "true intersection" nodes.
-  //         A node is kept in the simplified graph if:
-  //           a) it is the first or last node of any way  (endpoint)
-  //           b) it appears in more than one way          (real intersection)
-  //
-  //         Everything else is just a geometry shaping point and can be
-  //         folded into the edge geometry without becoming a graph node.
   // ------------------------------------------------------------------
   const intersectionNodes = new Set();
   osmData.elements.forEach(el => {
     if (el.type !== "way" || !el.nodes || el.nodes.length < 2) return;
-    // Endpoints are always kept
     intersectionNodes.add(el.nodes[0]);
     intersectionNodes.add(el.nodes[el.nodes.length - 1]);
-    // Interior nodes shared by multiple ways
     for (let i = 1; i < el.nodes.length - 1; i++) {
       if ((nodeWayCount[el.nodes[i]] || 0) > 1) {
         intersectionNodes.add(el.nodes[i]);
@@ -492,23 +498,19 @@ function transformOSMDataToRoadsData(osmData) {
  
   // ------------------------------------------------------------------
   // Step 4: Walk each way and emit one simplified edge per pair of
-  //         consecutive intersection nodes, accumulating geometry,
-  //         length, and travel time along the way.
+  //         consecutive intersection nodes.
   // ------------------------------------------------------------------
   const features_edges = [];
  
   osmData.elements.forEach(el => {
     if (el.type !== "way" || !el.nodes || el.nodes.length < 2) return;
  
-    // --- Road attributes ---
     const tags        = el.tags || {};
     const highwayType = tags.highway || "";
     const is_attractor = (highwayType === "motorway" || highwayType === "trunk") ? 1 : 0;
  
-    // Speed (km/h): prefer explicit maxspeed tag, fall back to road-type default
     const parsedSpeed = (el.tags && el.tags.maxspeed) ? parseMaxSpeed(el.tags.maxspeed) : null;
     let speed = 50;
-
     if (parsedSpeed !== null) {
         speed = parsedSpeed;
     } else {
@@ -521,14 +523,9 @@ function transformOSMDataToRoadsData(osmData) {
         else if (highwayType === "residential") speed = 30;
     }
    
-    // Directionality
     const isReversed = tags.oneway === "-1";
     const isOneWay   = tags.oneway === "yes" || isReversed;
  
-    // --- Walk the node sequence, splitting at intersection nodes ---
-    // segStart      : OSM id of the intersection node where this segment begins
-    // segCoords     : accumulated [lon, lat] coordinate list (full geometry)
-    // segLength     : accumulated haversine length in km
     let segStart  = el.nodes[0];
     let segCoords = nodeCoords[segStart] ? [nodeCoords[segStart]] : [];
     let segLength = 0;
@@ -540,10 +537,7 @@ function transformOSMDataToRoadsData(osmData) {
       const prevCoord = nodeCoords[prevId];
       const currCoord = nodeCoords[currId];
  
-      // Skip sub-segments whose nodes are missing from the coordinate map
-      // (can happen when the Overpass query clips at the bbox boundary)
       if (!prevCoord || !currCoord) {
-        // If we have a partial segment and hit a gap, discard it and restart
         if (intersectionNodes.has(currId) && currCoord) {
           segStart  = currId;
           segCoords = [currCoord];
@@ -552,7 +546,6 @@ function transformOSMDataToRoadsData(osmData) {
         continue;
       }
  
-      // Accumulate sub-segment
       const subLength = haversineDistance(
         prevCoord[1], prevCoord[0],
         currCoord[1], currCoord[0]
@@ -560,21 +553,20 @@ function transformOSMDataToRoadsData(osmData) {
       segLength += subLength;
       segCoords.push(currCoord);
  
-      // When we reach an intersection node, emit the simplified edge
       if (intersectionNodes.has(currId)) {
         if (segCoords.length >= 2 && segLength > 0) {
-          const travelTime = (segLength / speed) * 3600; // seconds
- 
-          // Forward direction: segStart → currId
-          // For oneway="-1" the physical travel goes currId → segStart,
-          // so we swap start/end and reverse the coordinate array.
-          const fwdCoords  = isReversed ? segCoords.slice().reverse() : segCoords.slice();
-          const fwdStart   = isReversed ? currId.toString() : segStart.toString();
-          const fwdEnd     = isReversed ? segStart.toString() : currId.toString();
+          const travelTime = (segLength / speed) * 3600;
+
+          // Apply geometry simplification before emitting
+          const simplifiedCoords = simplifyCoords(
+              isReversed ? segCoords.slice().reverse() : segCoords.slice()
+          );
+          const fwdStart = isReversed ? currId.toString() : segStart.toString();
+          const fwdEnd   = isReversed ? segStart.toString() : currId.toString();
  
           features_edges.push({
             type: "Feature",
-            geometry: { type: "LineString", coordinates: fwdCoords },
+            geometry: { type: "LineString", coordinates: simplifiedCoords },
             properties: {
               start:        fwdStart,
               end:          fwdEnd,
@@ -584,11 +576,10 @@ function transformOSMDataToRoadsData(osmData) {
             }
           });
  
-          // Reverse direction for two-way roads
           if (!isOneWay) {
             features_edges.push({
               type: "Feature",
-              geometry: { type: "LineString", coordinates: fwdCoords.slice().reverse() },
+              geometry: { type: "LineString", coordinates: simplifiedCoords.slice().reverse() },
               properties: {
                 start:        fwdEnd,
                 end:          fwdStart,
@@ -600,7 +591,6 @@ function transformOSMDataToRoadsData(osmData) {
           }
         }
  
-        // Reset for the next segment starting at this intersection node
         segStart  = currId;
         segCoords = [currCoord];
         segLength = 0;
@@ -627,6 +617,7 @@ function transformOSMDataToRoadsData(osmData) {
     features: features_edges.concat(features_nodes)
   };
 }
+
 
 
 
