@@ -290,10 +290,26 @@ function addDrawControl() {
                 map.setView([lat, lng], 11);
 
                 // Marker centro città
-                let centerMarker = L.circleMarker([lat, lng], {
-                    radius: 6, color: '#333', fillColor: '#333',
-                    fillOpacity: 1, weight: 2
-                }).addTo(map);
+                let centerMarker = L.marker([lat, lng], {
+                        draggable: true,
+                        icon: L.divIcon({
+                            className: '',
+                            html: `<div style="
+                                width: 14px; height: 14px;
+                                background: #333; border-radius: 50%;
+                                border: 2px solid white;
+                                box-shadow: 0 0 5px rgba(0,0,0,0.5);
+                                cursor: grab;">
+                            </div>`,
+                            iconSize: [14, 14],
+                            iconAnchor: [7, 7]
+                        })
+                    }).addTo(map);
+
+                centerMarker.on('drag', function(e) {
+                    const pos = e.target.getLatLng();
+                    radiusCircle.setLatLng(pos);
+                });
 
                 // Cerchio raggio
                 let radiusCircle = L.circle([lat, lng], {
@@ -335,10 +351,11 @@ function addDrawControl() {
 
                 document.getElementById('btn-download-radius').addEventListener('click', (e) => {
                     L.DomEvent.stopPropagation(e);
+                    const pos = centerMarker.getLatLng();
                     map.removeLayer(centerMarker);
                     map.removeLayer(radiusCircle);
                     showMapLoader("Downloading road network…");
-                    downloadRoadNetworkByRadius(lat, lng, radius)
+                    downloadRoadNetworkByRadius(pos.lat, pos.lng, radius)
                         .then(geojsonData => {
                             RoadsData = geojsonData;
                             initializeGraphNetwork(RoadsData);
@@ -1657,25 +1674,23 @@ function debugNetworkSize(roadsData, nodes) {
 
 
 
-
-
-
 function searchCity(query) {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
-    return fetch(url, {
-        headers: { 
-            'Accept-Language': 'en',
-            'User-Agent': 'DiverCity/1.0'
-        }
-    })
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=en`;
+    return fetch(url)
     .then(response => response.json())
-    .then(results => {
-        console.log("Nominatim results:", results); // ← debug
-        if (results.length === 0) throw new Error("City not found");
+    .then(data => {
+        if (!data.features || data.features.length === 0) throw new Error("City not found");
+        
+        // Preferisci city > town > village
+        const priorities = ['city', 'town', 'village'];
+        const best = data.features.find(f => 
+            priorities.includes(f.properties.type)
+        ) || data.features[0];
+
         return {
-            lat: parseFloat(results[0].lat),
-            lng: parseFloat(results[0].lon),
-            name: results[0].display_name.split(',').slice(0, 2).join(',')
+            lat: best.geometry.coordinates[1],
+            lng: best.geometry.coordinates[0],
+            name: `${best.properties.name}, ${best.properties.country}`
         };
     });
 }
