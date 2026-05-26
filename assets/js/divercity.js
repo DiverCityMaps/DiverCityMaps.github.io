@@ -1,7 +1,6 @@
 // ==========================
 // divercity.js
 // Main entry point — global variables and core app functions
-// Depends on: utils.js, graph.js, osm.js, routing.js, ui.js, map_controls.js
 // ==========================
 
 // ==========================
@@ -15,12 +14,10 @@ let attractorSpeedMultiplier = 1.0;
 let isComputing = false;
 let overlayLayers = {};
 let previousBaseLayer = null;
-
+let currentCity = "Rome, Italy"; // default city name
 
 document.addEventListener('DOMContentLoaded', function() {
-    if (!map) {
-        initializeMap();
-    }
+    if (!map) initializeMap();
 });
 
 
@@ -29,11 +26,9 @@ document.addEventListener('DOMContentLoaded', function() {
 // ==========================
 
 function initializeMap() {
-
     osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Road network data © OpenStreetMap contributors, <a href="https://opendatacommons.org/licenses/odbl/" target="_blank">ODbL</a>'
     });
-
 
     map = L.map('map', {
         center: [0, 0],
@@ -45,7 +40,6 @@ function initializeMap() {
         layers: [],
         preferCanvas: true
     });
-
 
     initializeLayers();
     initializeControls();
@@ -103,7 +97,13 @@ function computeAndDrawPaths() {
     });
 
     const { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
-    updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
+
+    // Fastest route travel time in minutes
+    const fastestTimeMin = pathCosts.length > 0
+        ? Math.round(Math.min(...pathCosts) / 60)
+        : undefined;
+
+    updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity, fastestTimeMin);
 
     isRouteComputed = true;
     isComputing = false;
@@ -119,7 +119,6 @@ function resetRoute() {
     nodeMarkers = [];
 
     updateInfoBoxDefault();
-
     isRouteComputed = false;
 }
 

@@ -4,19 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DiverCity</title>
-
-    <!-- CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
     <link rel="stylesheet" href="./assets/css/css_trip_planner.css"/>
     <link rel="stylesheet" href="./assets/css/spinner.css"/>
 
-    <!-- Leaflet -->
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@2.2.11/osmtogeojson.min.js"></script>
 
-    <!-- DiverCity -->
     <script type="text/javascript" src="./assets/js/heap.js"></script>
     <script src="./data/road_networks/rome.js"></script>
     <script src="./assets/js/utils.js"></script>
@@ -28,6 +24,95 @@
     <script src="./assets/js/divercity.js"></script>
 </head>
 <body>
-    <div id="map" class="full-screen-map"></div>
+    <div id="app-container">
+        <div id="map"></div>
+        <div id="right-sidebar">
+            <!-- Layer Toggle -->
+            <div class="sidebar-section" id="layer-section">
+                <div class="sidebar-section-title">Map Style</div>
+                <div class="layer-toggle" id="layer-toggle">
+                    <label class="layer-option active" id="layer-roads">
+                        <input type="radio" name="layer" value="roads" checked>
+                        <span>Road Network</span>
+                    </label>
+                    <label class="layer-option" id="layer-osm">
+                        <input type="radio" name="layer" value="osm">
+                        <span>Street Map</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Route Settings -->
+            <div class="sidebar-section" id="settings-section">
+                <div class="sidebar-section-title sidebar-collapsible" id="settings-toggle">
+                    ⚙️ Route Settings <span class="sidebar-chevron">▾</span>
+                </div>
+                <div id="settings-content">
+                    <div class="slider-group">
+                        <label class="tooltip slider-label" for="slider-k">
+                            k: <span id="value-k">5</span>
+                            <span class="tooltiptext">Number of alternative routes to compute</span>
+                        </label>
+                        <input type="range" id="slider-k" min="1" max="10" step="1" value="5">
+                    </div>
+                    <div class="slider-group">
+                        <label class="tooltip slider-label" for="slider-p">
+                            p: <span id="value-p">0.1</span>
+                            <span class="tooltiptext">Penalty factor for the Path Penalization algorithm</span>
+                        </label>
+                        <input type="range" id="slider-p" min="0" max="1" step="0.01" value="0.1">
+                    </div>
+                    <div class="slider-group">
+                        <label class="tooltip slider-label" for="slider-eps">
+                            ε (epsilon): <span id="value-eps">0.3</span>
+                            <span class="tooltiptext">Cost threshold for near-shortest routes</span>
+                        </label>
+                        <input type="range" id="slider-eps" min="0" max="1" step="0.01" value="0.3">
+                    </div>
+                    <div class="slider-group">
+                        <label class="tooltip slider-label" for="slider-max-it">
+                            Max Iterations: <span id="value-max-it">25</span>
+                            <span class="tooltiptext">Maximum pathfinding iterations</span>
+                        </label>
+                        <input type="range" id="slider-max-it" min="10" max="300" step="10" value="25">
+                    </div>
+                    <div class="sidebar-divider"></div>
+                    <div class="slider-group">
+                        <label class="tooltip slider-label" for="slider-attractor-reduction">
+                            Attractor speed: <span id="value-attractor-reduction">100%</span>
+                            <span id="attractor-badge"></span>
+                            <span class="tooltiptext">Modify speed on motorways and trunk roads</span>
+                        </label>
+                        <input type="range" id="slider-attractor-reduction" min="0.1" max="2.0" step="0.1" value="1.0">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Legend -->
+            <div class="sidebar-section" id="legend-section">
+                <div class="sidebar-section-title">Legend</div>
+                <div class="legend-item">
+                    <span class="legend-line" style="background: darkblue;"></span>
+                    <span>NSR (Near Shortest Route)</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-line" style="background: #e83030;"></span>
+                    <span>Non-NSR</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-line" id="legend-attractor-color" style="background: #F0C060;"></span>
+                    <span>Attractor Road</span>
+                </div>
+            </div>
+
+            <!-- Spacer -->
+            <div style="flex: 1;"></div>
+
+            <!-- About -->
+            <div class="sidebar-section sidebar-about">
+                <span id="about-btn-sidebar">About the measure ℹ️</span>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
