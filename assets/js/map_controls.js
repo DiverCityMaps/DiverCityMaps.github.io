@@ -8,9 +8,10 @@
 // ==========================
 
 function styleRoads(feature) {
-    return feature.properties.is_attractor === 1
-        ? { color: "#FFE5B4", weight: 3 }
-        : { color: "#D3D3D3", weight: 0.35 };
+    if (feature.properties.is_attractor === 1) {
+        return { color: "#F5D78E", weight: 2.5, opacity: 0.8 };
+    }
+    return { color: "#D3D3D3", weight: 0.35 };
 }
 
 function filterLineString(feature) {
@@ -18,13 +19,10 @@ function filterLineString(feature) {
 }
 
 function updateLayerControl() {
-    if (layerControl) map.removeControl(layerControl);
-    let baseLayers = {
-        "Road Network": edgeLayer,
-        "Street Map": osmLayer
-    };
-    let overlayLayers = {};
-    layerControl = L.control.layers(baseLayers, overlayLayers, { collapsed: false }).addTo(map);
+    // Layer control is in the sidebar HTML — just ensure Road Network is active
+    document.querySelectorAll('.layer-option').forEach(o => o.classList.remove('active'));
+    const roadsOption = document.getElementById('layer-roads');
+    if (roadsOption) roadsOption.classList.add('active');
 }
 
 function ensureCustomPanes(map) {
@@ -53,13 +51,7 @@ function initializeLayers() {
         filter: filterLineString
     }).addTo(map);
 
-    let baseLayers = {
-        "Road Network": edgeLayer,
-        "Street Map": osmLayer
-    };
-
-    overlayLayers = {};
-    layerControl = L.control.layers(baseLayers, overlayLayers, { collapsed: false }).addTo(map);
+    // Layer control is custom (in sidebar) — no Leaflet control needed
 }
 
 function initializeGraphNetwork(RoadsData) {
@@ -171,7 +163,7 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
     pathLayers = [];
 
     const pathCategories = [
-        { paths: filterNoNearShortest(allPaths, pathCosts, epsilon), color: "red" },
+        { paths: filterNoNearShortest(allPaths, pathCosts, epsilon), color: "#e83030" },
         { paths: filterNearShortest(allPaths, pathCosts, epsilon), color: "darkblue" }
     ];
 
@@ -253,6 +245,7 @@ function handleAreaSelection(event) {
         edgeLayer = null;
     }
 
+    currentCity = "Custom area";
     showMapLoader("Downloading road network…");
 
     downloadRoadNetwork(bbox)
@@ -502,6 +495,7 @@ function addDrawControl() {
                     const pos = centerMarker.getLatLng();
                     map.removeLayer(centerMarker);
                     map.removeLayer(radiusCircle);
+                    currentCity = name;
                     showMapLoader("Downloading road network…");
                     downloadRoadNetworkByRadius(pos.lat, pos.lng, radius)
                         .then(geojsonData => {

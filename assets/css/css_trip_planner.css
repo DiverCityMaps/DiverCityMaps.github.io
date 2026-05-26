@@ -1,373 +1,557 @@
-
-/* Full-Screen Map */
-.full-screen-map {
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100vh;
-    height: calc(100vh - 1.5em);
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root {
+  --panel-bg:       rgba(255, 255, 255, 0.97);
+  --panel-radius:   12px;
+  --panel-shadow:   0 2px 10px rgba(0, 0, 0, 0.10);
+  --panel-border:   1px solid #e8e8e8;
+  --sidebar-width:  260px;
+  --accent:         #0b4bd6;
+  --accent-light:   #f0f4ff;
+  --text-primary:   #111;
+  --text-secondary: #444;
+  --text-label:     #888;
+  --font:           system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --transition:     0.18s ease;
 }
 
-
-#settings-panel {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(255, 255, 255, 0.9);
-    padding: 10px;
-    border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    z-index: 1000;
-    width: 200px;
+/* ============================================================
+   APP LAYOUT — map + sidebar
+   ============================================================ */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
 }
 
-#settings-panel label {
-    display: block;
-    margin-top: 8px;
-    font-weight: bold;
+#app-container {
+  display: flex;
+  height: calc(100vh - 1.5em);
+  width: 100%;
 }
 
-#settings-panel input {
-    width: 100%;
-    padding: 4px;
-    margin-top: 3px;
+#map {
+  flex: 1;
+  height: 100%;
+  min-width: 0;
 }
 
-#apply-settings {
-    margin-top: 10px;
-    width: 100%;
-    padding: 6px;
-    background: #007bff;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
+/* ============================================================
+   RIGHT SIDEBAR
+   ============================================================ */
+#right-sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  height: 100%;
+  background: #fafafa;
+  border-left: var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  z-index: 1000;
 }
 
-#apply-settings:hover {
-    background: #0056b3;
+.sidebar-section {
+  padding: 14px 16px;
+  border-bottom: var(--panel-border);
 }
 
+.sidebar-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  letter-spacing: 0.1px;
+}
 
-/* Styles for Info Box */
+.sidebar-collapsible {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+
+.sidebar-collapsible:hover {
+  color: var(--accent);
+}
+
+.sidebar-chevron {
+  font-size: 12px;
+  color: var(--text-label);
+  transition: transform var(--transition);
+}
+
+.sidebar-divider {
+  border-top: var(--panel-border);
+  margin: 10px 0;
+}
+
+.sidebar-about {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-label);
+  cursor: pointer;
+  text-align: center;
+  border-bottom: none;
+  padding: 12px 16px;
+}
+
+.sidebar-about:hover {
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   LAYER TOGGLE
+   ============================================================ */
+.layer-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.layer-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: background var(--transition), color var(--transition);
+  border: 1px solid transparent;
+}
+
+.layer-option input[type="radio"] {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.layer-option.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: #c8d8f8;
+  font-weight: 600;
+}
+
+.layer-option:hover:not(.active) {
+  background: #f0f0f0;
+}
+
+/* ============================================================
+   SLIDERS
+   ============================================================ */
+.slider-group {
+  margin-bottom: 6px;
+}
+
+.slider-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+}
+
+.slider-group input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+/* Attractor badge */
+.dc-attractor-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.dc-attractor-badge.slower {
+  background: #fff0f0;
+  color: #d3202f;
+}
+
+.dc-attractor-badge.faster {
+  background: #f0fff4;
+  color: #1a7a3f;
+}
+
+/* ============================================================
+   LEGEND
+   ============================================================ */
+.legend-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.legend-line {
+  width: 22px;
+  height: 3px;
+  margin-right: 8px;
+  display: inline-block;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   MAP BASE
+   ============================================================ */
+.leaflet-container {
+  background: #f8f8f8 !important;
+  outline: none !important;
+}
+
+.leaflet-pane.leaflet-vector-pane svg path {
+  vector-effect: non-scaling-stroke;
+}
+
+/* Hide Leaflet's default layer control */
+.leaflet-control-layers {
+  display: none !important;
+}
+
+/* Hide Leaflet Draw toolbar */
+.leaflet-draw-toolbar {
+  display: none !important;
+}
+
+/* ============================================================
+   LEFT FLOATING PANELS
+   ============================================================ */
+
+/* Shared panel style */
+.info-box,
+.load-city-btn,
+.about-btn {
+  background: var(--panel-bg);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--panel-shadow);
+  border: var(--panel-border);
+  font-family: var(--font);
+  color: var(--text-primary);
+}
+
+/* INFO BOX */
 .info-box {
-    position: absolute;
-    top: 280px; /* Adjust position below zoom controls */
-    left: 10px;
-    padding: 10px 15px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    color: #333;
-    min-width: 180px;
-    max-width: 280px;
-    z-index: 1000; /* Ensure it stays on top */
+  position: absolute;
+  top: 280px;
+  left: 10px;
+  padding: 14px 16px;
+  min-width: 200px;
+  max-width: 250px;
+  z-index: 1000;
 }
 
-/* Slider Container (aligned with Info Box style) */
-.slider-container {
-    position: absolute;
-    top: 100px; /* Positioned below the Info Box */
-    right: 10px;
-    padding: 10px 15px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    color: #333;
-    min-width: 180px;
-    max-width: 300px;
-    z-index: 1000;
-    overflow: visible;
-    transition: max-height 0.3s ease;
+.dc-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
 }
 
-/* Collapsible Header */
-.slider-header {
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-    text-align: center;
-    background: #f7f7f7;
-    border-radius: 8px;
-    padding: 5px;
-    user-select: none;
-    color: #333;
-    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+.dc-panel-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
-/* Collapsible Content */
-.slider-content {
-    display: block;
-    max-height: 300px;
-    overflow: visible;
-    padding-top: 10px;
-    transition: max-height 0.3s ease;
+.dc-reset-btn {
+  font-size: 11px;
+  color: var(--text-label);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background var(--transition), color var(--transition);
 }
 
-/* Collapsed state */
-.slider-container.collapsed .slider-content {
-    display: none;
-    max-height: 0;
-    overflow: hidden;
+.dc-reset-btn:hover {
+  background: #f0f0f0;
+  color: var(--text-secondary);
 }
 
-/* Label styling */
-.slider-container label {
-    display: block;
-    margin-top: 5px;
-    font-weight: bold;
-    font-size: 13px;
+.dc-city-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
 }
 
-/* Slider input styling */
-.slider-container input[type="range"] {
-    width: 100%;
-    margin-top: 3px;
-    margin-bottom: 10px;
-    cursor: pointer;
+.dc-prd-block {
+  background: var(--accent-light);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
 }
 
+.dc-prd-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-label);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
 
-/* Tooltip Container */
+.dc-prd-score {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.dc-prd-tag {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.dc-divider {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 8px 0;
+}
+
+.dc-field-label {
+  font-size: 11px;
+  color: var(--text-label);
+  margin-bottom: 2px;
+}
+
+.dc-field-value {
+  font-size: 12px;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.dc-swap-row {
+  margin: 2px 0 6px 0;
+}
+
+.dc-swap-btn {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 2px 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+}
+
+.dc-swap-btn:hover {
+  background: var(--accent-light);
+}
+
+.dc-metrics-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.dc-metric {
+  flex: 1;
+}
+
+.dc-extra-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-label);
+  margin-top: 4px;
+}
+
+/* LOAD A NEW CITY */
+.load-city-btn {
+  position: absolute;
+  top: 10px;
+  left: 50px;
+  z-index: 1000;
+  padding: 10px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  transition: box-shadow var(--transition);
+  user-select: none;
+  max-width: 240px;
+}
+
+.load-city-btn:hover {
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+}
+
+.load-city-btn .btn-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.load-city-btn .btn-subtitle {
+  font-size: 11px;
+  color: var(--text-label);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.load-city-btn .btn-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.load-city-btn .btn-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.load-city-btn.drawing {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+/* ============================================================
+   TOOLTIP
+   ============================================================ */
 .tooltip {
   position: relative;
   display: inline-block;
   cursor: pointer;
-  color: #333;
+  color: var(--text-primary);
 }
 
-/* Tooltip Text */
 .tooltip .tooltiptext {
   visibility: hidden;
-  width: 220px;
-  background-color: #333;
+  width: 180px;
+  background: #222;
   color: #fff;
   text-align: center;
-  border-radius: 6px;
-  padding: 8px;
+  border-radius: 8px;
+  padding: 8px 10px;
   position: absolute;
-  z-index: 1;
+  z-index: 9999;
   top: 50%;
-  right: 105%;  /* Position to the left */
+  right: 105%;
   transform: translateY(-50%);
   opacity: 0;
-  transition: opacity 0.3s;
-  font-size: 12px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: opacity var(--transition);
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  pointer-events: none;
 }
 
-/* Tooltip Arrow */
 .tooltip .tooltiptext::after {
   content: "";
   position: absolute;
-  top: 50%; /* At the bottom of the tooltip */
+  top: 50%;
   left: 100%;
   margin-top: -5px;
   border-width: 5px;
   border-style: solid;
-  border-color: #333 transparent transparent transparent;
-  transform: rotate(270deg);
+  border-color: transparent transparent transparent #222;
 }
 
-/* Show Tooltip on Hover */
 .tooltip:hover .tooltiptext {
   visibility: visible;
   opacity: 1;
 }
 
-
-@keyframes pulse {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 0.6;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.pulsing-marker {
-  animation: pulse 1s infinite;
-}
-
-
-
-.leaflet-container {
-  background: #FCFCFC !important;
-  outline: none !important;
-}
-
-
-.leaflet-pane.leaflet-vector-pane svg path {
-    vector-effect: non-scaling-stroke;
-}
-
-
-/* Nascondi toolbar Leaflet.Draw originale */
-.leaflet-draw-toolbar {
-    display: none !important;
-}
-
-/* Bottone Load City custom */
-.load-city-btn {
-    position: absolute;
-    top: 10px;
-    left: 50px;
-    z-index: 1000;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 10px;
-    padding: 10px 14px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    cursor: pointer;
-    font-family: Arial, sans-serif;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transition: box-shadow 0.2s, border-color 0.2s;
-    user-select: none;
-    max-width: 220px;
-}
-
-.load-city-btn:hover {
-    box-shadow: 0 4px 14px rgba(0,0,0,0.2);
-    border-color: #aaa;
-}
-
-.load-city-btn .btn-icon {
-    font-size: 22px;
-    flex-shrink: 0;
-}
-
-.load-city-btn .btn-text {
-    display: flex;
-    flex-direction: column;
-}
-
-.load-city-btn .btn-title {
-    font-size: 13px;
-    font-weight: bold;
-    color: #111;
-    line-height: 1.3;
-}
-
-.load-city-btn .btn-subtitle {
-    font-size: 11px;
-    color: #666;
-    margin-top: 2px;
-    line-height: 1.3;
-}
-
-/* Stato attivo mentre si sta disegnando */
-.load-city-btn.drawing {
-    border-color: #007bff;
-    background: #f0f6ff;
-    box-shadow: 0 0 0 3px rgba(0,123,255,0.15);
-}
-
-.load-city-btn.drawing .btn-subtitle {
-    color: #007bff;
-    font-weight: bold;
-}
-
-.about-btn {
-    position: fixed;
-    bottom: 50px;
-    left: 10px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    padding: 6px 12px;
-    font-family: Arial, sans-serif;
-    font-size: 12px;
-    font-weight: bold;
-    color: #333;
-    cursor: pointer;
-    z-index: 1000;
-    user-select: none;
-}
-
-.about-btn:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-}
-
+/* ============================================================
+   ABOUT MODAL
+   ============================================================ */
 .about-modal-overlay {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 9998;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 9998;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .about-modal {
-    background: white;
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    padding: 28px 32px;
-    max-width: 480px;
-    width: 90%;
-    font-family: Arial, sans-serif;
-    font-size: 13px;
-    color: #333;
-    line-height: 1.6;
-    position: relative;
-    z-index: 9999;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+  padding: 28px 32px;
+  max-width: 480px;
+  width: 90%;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.6;
+  position: relative;
+  z-index: 9999;
 }
 
 .about-modal h2 {
-    margin: 0 0 14px 0;
-    font-size: 16px;
-    color: #111;
+  margin: 0 0 14px 0;
+  font-size: 16px;
+  font-weight: 700;
 }
 
-.about-modal p {
-    margin: 0 0 10px 0;
-}
+.about-modal p { margin: 0 0 10px 0; }
 
 .about-modal-close {
-    position: absolute;
-    top: 14px; right: 18px;
-    font-size: 20px;
-    cursor: pointer;
-    color: #888;
-    line-height: 1;
+  position: absolute;
+  top: 14px; right: 18px;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-label);
+  transition: color var(--transition);
 }
 
-.about-modal-close:hover { color: #333; }
+.about-modal-close:hover { color: var(--text-primary); }
 
 .about-formula {
-    background: #f0f4ff;
-    border-left: 3px solid #0b4bd6;
-    padding: 10px 14px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-size: 15px;
-    text-align: center;
-    margin: 12px 0;
-    color: #0b4bd6;
-    font-weight: bold;
+  background: var(--accent-light);
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 15px;
+  text-align: center;
+  margin: 12px 0;
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .about-link {
-    display: inline-block;
-    margin-top: 8px;
-    color: #0b4bd6;
-    text-decoration: none;
-    font-size: 12px;
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
 }
 
 .about-link:hover { text-decoration: underline; }
+
+/* ============================================================
+   SCALE CONTROL
+   ============================================================ */
+.leaflet-control-scale {
+  margin-bottom: 8px !important;
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes pulse {
+  0%   { transform: scale(1);   opacity: 1; }
+  50%  { transform: scale(1.2); opacity: 0.6; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+.pulsing-marker { animation: pulse 1s infinite; }
