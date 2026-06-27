@@ -2,16 +2,16 @@
 // map_controls.js
 // Map controls, layers, styling and event handlers
 // Depends on: graph.js (buildGraph), osm.js, routing.js, ui.js
-// Uses globals: map, osmLayer, edgeLayer, graph, nodes, RoadsData,
-//               selectedNodes, nodeMarkers, pathLayers, overlayLayers,
-//               previousBaseLayer, isComputing, isRouteComputed, layerControl
 // ==========================
 
 function styleRoads(feature) {
     if (feature.properties.is_attractor === 1) {
-        return { color: "#F5D78E", weight: 2.5, opacity: 0.8 };
+        let color = "#f0b842";
+        if (attractorSpeedMultiplier < 1.0) color = "#c0504a";
+        if (attractorSpeedMultiplier > 1.0) color = "#4a9a4a";
+        return { color, weight: 2.5 };
     }
-    return { color: "#D3D3D3", weight: 0.35 };
+    return { color: "#b8b8b8", weight: 0.35 };
 }
 
 function filterLineString(feature) {
@@ -19,16 +19,27 @@ function filterLineString(feature) {
 }
 
 function updateLayerControl() {
-    // Layer control is in the sidebar HTML — just ensure Road Network is active
-    document.querySelectorAll('.layer-option').forEach(o => o.classList.remove('active'));
-    const roadsOption = document.getElementById('layer-roads');
+    document.querySelectorAll('.layer-opt').forEach(o => o.classList.remove('active'));
+    const roadsOption = document.getElementById('layer-opt-roads');
     if (roadsOption) roadsOption.classList.add('active');
+}
+
+function filterAttractor(feature) {
+    return feature.geometry.type === "LineString" && feature.properties.is_attractor === 1;
+}
+
+function filterRegularRoad(feature) {
+    return feature.geometry.type === "LineString" && feature.properties.is_attractor !== 1;
 }
 
 function ensureCustomPanes(map) {
     if (!map.getPane('roads')) {
         map.createPane('roads');
         map.getPane('roads').style.zIndex = 400;
+    }
+    if (!map.getPane('attractors')) {
+        map.createPane('attractors');
+        map.getPane('attractors').style.zIndex = 420;
     }
     if (!map.getPane('routes')) {
         map.createPane('routes');
@@ -41,17 +52,115 @@ function ensureCustomPanes(map) {
     }
 }
 
+// ── Rasterize road network to ImageOverlay ──────────────────
+// Draws the GeoJSON network onto an offscreen canvas at high
+// resolution, converts to a static image, and replaces the
+// vector layers with an ImageOverlay. Routes/markers stay as
+// vectors above. This makes zooming fast regardless of network size.
+
+let networkRasterOverlay = null;
+let networkRasterBounds  = null;
+
+function rasterizeNetworkToOverlay(roadsData, bounds) {
+
+    const CANVAS_SIZE = 4096;
+    const PADDING     = 0.04;
+
+    const south = bounds.getSouth(), north = bounds.getNorth();
+    const west  = bounds.getWest(),  east  = bounds.getEast();
+    const padLat = (north - south) * PADDING;
+    const padLng = (east  - west)  * PADDING;
+
+    const rasterBounds = L.latLngBounds(
+        [south - padLat, west  - padLng],
+        [north + padLat, east  + padLng]
+    );
+
+    networkRasterBounds = bounds;
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = CANVAS_SIZE;
+    canvas.height = CANVAS_SIZE;
+    const ctx = canvas.getContext('2d');
+
+    // Transparent background — do NOT fill with any color
+    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+    const rW = rasterBounds.getEast()  - rasterBounds.getWest();
+    const rH = rasterBounds.getNorth() - rasterBounds.getSouth();
+
+    function toPixel(lat, lng) {
+        return [
+            ((lng - rasterBounds.getWest())  / rW) * CANVAS_SIZE,
+            ((rasterBounds.getNorth() - lat) / rH) * CANVAS_SIZE
+        ];
+    }
+
+    // Draw ONLY regular roads (not attractors — they stay as vector)
+    ctx.strokeStyle = '#a8a8a8';
+    ctx.lineWidth   = 1.5;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+
+    roadsData.features.forEach(f => {
+        if (f.geometry.type !== 'LineString') return;
+        if (f.properties.is_attractor === 1) return;   // skip attractors
+        const coords = f.geometry.coordinates;
+        if (!coords || coords.length < 2) return;
+        ctx.beginPath();
+        const [x0, y0] = toPixel(coords[0][1], coords[0][0]);
+        ctx.moveTo(x0, y0);
+        for (let i = 1; i < coords.length; i++) {
+            const [x, y] = toPixel(coords[i][1], coords[i][0]);
+            ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    });
+
+    // Must use PNG to preserve transparency
+    const dataURL = canvas.toDataURL('image/png');
+
+    // Add new overlay before removing old to avoid flicker
+    const newOverlay = L.imageOverlay(dataURL, rasterBounds, {
+        opacity:     1,
+        interactive: false,
+        zIndex:      399
+    }).addTo(map);
+
+    if (networkRasterOverlay) map.removeLayer(networkRasterOverlay);
+    networkRasterOverlay = newOverlay;
+
+    // Remove the temporary regular-road vector layer (keep attractorLayer as vector)
+    if (edgeLayer) {
+        map.removeLayer(edgeLayer);
+        edgeLayer = null;
+    }
+}
+
 function initializeLayers() {
+    ensureCustomPanes(map);
     let bgraph = buildGraph(RoadsData);
     graph = bgraph.graph;
     nodes = bgraph.nodes;
 
+    // Draw vectors temporarily to get bounds, then rasterize
     edgeLayer = L.geoJSON(RoadsData, {
+        pane: 'roads',
         style: styleRoads,
-        filter: filterLineString
+        filter: filterRegularRoad,
+        interactive: false
     }).addTo(map);
 
-    // Layer control is custom (in sidebar) — no Leaflet control needed
+    window.attractorLayer = L.geoJSON(RoadsData, {
+        pane: 'attractors',
+        style: styleRoads,
+        filter: filterAttractor,
+        interactive: false
+    }).addTo(map);
+
+    // Rasterize after next frame so Leaflet has computed bounds
+    const bounds = edgeLayer.getBounds();
+    requestAnimationFrame(() => rasterizeNetworkToOverlay(RoadsData, bounds));
 }
 
 function initializeGraphNetwork(RoadsData) {
@@ -66,18 +175,32 @@ function initializeGraphNetwork(RoadsData) {
     }
 
     if (edgeLayer) map.removeLayer(edgeLayer);
+    if (window.attractorLayer) map.removeLayer(window.attractorLayer);
     if (map.hasLayer(osmLayer)) map.removeLayer(osmLayer);
 
+    // Draw vectors briefly to compute bounds
     edgeLayer = L.geoJSON(RoadsData, {
         pane: 'roads',
         style: styleRoads,
-        filter: filterLineString,
+        filter: filterRegularRoad,
         interactive: false
     }).addTo(map);
 
+    window.attractorLayer = L.geoJSON(RoadsData, {
+        pane: 'attractors',
+        style: styleRoads,
+        filter: filterAttractor,
+        interactive: false
+    }).addTo(map);
+
+    const bounds = edgeLayer.getBounds();
+    map.fitBounds(bounds);
+
+    // Rasterize on next frame
+    requestAnimationFrame(() => rasterizeNetworkToOverlay(RoadsData, bounds));
+
     overlayLayers = {};
     updateLayerControl();
-    map.fitBounds(edgeLayer.getBounds());
 }
 
 function findClosestNode(latlng) {
@@ -86,25 +209,17 @@ function findClosestNode(latlng) {
 
     for (let nodeId in nodes) {
         if (!graph.hasOwnProperty(nodeId)) continue;
-
         let nodeCoords = nodes[nodeId];
         if (!nodeCoords) continue;
-
         let dist = Math.sqrt(
             Math.pow(nodeCoords[1] - latlng.lat, 2) +
             Math.pow(nodeCoords[0] - latlng.lng, 2)
         );
-
         if (dist < minDist) {
             minDist = dist;
             closestNode = nodeId;
         }
     }
-
-    if (!closestNode) {
-        console.error("No closest node found for coordinates:", latlng);
-    }
-
     return closestNode;
 }
 
@@ -113,7 +228,7 @@ function highlightNodes() {
     nodeMarkers = [];
 
     selectedNodes.forEach((nodeId, index) => {
-        let color = index === 0 ? "green" : "red";
+        const color = index === 0 ? "green" : "red";
 
         let marker = L.marker([nodes[nodeId][1], nodes[nodeId][0]], {
             pane: 'markers',
@@ -121,15 +236,14 @@ function highlightNodes() {
             icon: L.divIcon({
                 className: 'custom-marker',
                 html: `<div style="
-                    background-color: ${color};
-                    width: 16px;
-                    height: 16px;
-                    border-radius: 50%;
-                    border: 2px solid white;
-                    box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                    background-color:${color};
+                    width:16px; height:16px;
+                    border-radius:50%;
+                    border:2px solid white;
+                    box-shadow:0 0 5px rgba(0,0,0,0.5);">
                 </div>`,
-                iconSize: [20, 20],
-                iconAnchor: [10, 10]
+                iconSize: [22, 22],
+                iconAnchor: [11, 11]
             })
         }).addTo(map);
 
@@ -140,7 +254,9 @@ function highlightNodes() {
             selectedNodes[index] = closestNode;
 
             if (selectedNodes.length === 2) {
-                let { allPaths, pathCosts } = computeKAlternativePaths(graph, selectedNodes[0], selectedNodes[1], k, p, max_it);
+                let { allPaths, pathCosts } = computeKAlternativePaths(
+                    graph, selectedNodes[0], selectedNodes[1], k, p, max_it
+                );
                 drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
 
                 let edgeWeights = {};
@@ -151,7 +267,9 @@ function highlightNodes() {
                     }
                 });
 
-                let { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
+                let { diverCity, numNSP, spatialSpread } = computeDiverCity(
+                    allPaths, pathCosts, edgeWeights, epsilon
+                );
                 updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
             }
         });
@@ -163,8 +281,8 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
     pathLayers = [];
 
     const pathCategories = [
-        { paths: filterNoNearShortest(allPaths, pathCosts, epsilon), color: "#e83030" },
-        { paths: filterNearShortest(allPaths, pathCosts, epsilon), color: "darkblue" }
+        { paths: filterNoNearShortest(allPaths, pathCosts, epsilon), color: "#ef4444" },
+        { paths: filterNearShortest(allPaths, pathCosts, epsilon),   color: "#1e3a8a" }
     ];
 
     let edgeCounts = {};
@@ -181,14 +299,11 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
 
     pathCategories.forEach(({ paths, color }) => {
         let geoJsonFeatures = [];
-
         paths.forEach(pathEdges => {
             pathEdges.forEach(([start, end]) => {
                 let key = start < end ? `${start}-${end}` : `${end}-${start}`;
                 let weight = 1 + (edgeCounts[key] / maxCount) * 8;
-
-                let edgeGeometry = graph[start].find(link => link.node === end)?.geometry;
-
+                let edgeGeometry = graph[start]?.find(link => link.node === end)?.geometry;
                 if (edgeGeometry) {
                     geoJsonFeatures.push({
                         type: "Feature",
@@ -201,10 +316,7 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
 
         let layer = L.geoJSON(geoJsonFeatures, {
             pane: 'routes',
-            style: feature => ({
-                color: color,
-                weight: feature.properties.weight
-            })
+            style: feature => ({ color, weight: feature.properties.weight })
         }).addTo(map);
 
         layer.bringToFront();
@@ -240,10 +352,7 @@ function handleAreaSelection(event) {
     ];
 
     resetRoute();
-    if (edgeLayer) {
-        map.removeLayer(edgeLayer);
-        edgeLayer = null;
-    }
+    if (edgeLayer) { map.removeLayer(edgeLayer); edgeLayer = null; }
 
     currentCity = "Custom area";
     showMapLoader("Downloading road network…");
@@ -268,22 +377,15 @@ function addDrawControl() {
 
     let drawControl = new L.Control.Draw({
         draw: {
-            rectangle: {
-                showArea: true,
-                metric: true
-            },
-            polygon: false,
-            polyline: false,
-            circle: false,
-            marker: false,
-            circlemarker: false
+            rectangle: { showArea: true, metric: true },
+            polygon: false, polyline: false,
+            circle: false, marker: false, circlemarker: false
         },
         edit: false
     });
     map.addControl(drawControl);
 
     setTimeout(() => {
-
         L.GeometryUtil.readableArea = function(area) {
             return (area / 1000000).toFixed(2) + ' km²';
         };
@@ -291,211 +393,160 @@ function addDrawControl() {
         const drawButton = document.querySelector('.leaflet-draw-draw-rectangle');
         if (!drawButton) return;
 
+        // ── Pill & city panel state machine ──────────────────────
+        const pill      = document.getElementById('load-city-pill');
+        const cityPanel = document.getElementById('city-panel');
         let step = 0;
+        let centerMarker = null, radiusCircle = null;
 
-        const btn = document.createElement('div');
-        btn.className = 'load-city-btn';
-        document.getElementById('map').appendChild(btn);
-        L.DomEvent.disableClickPropagation(btn);
+        function openPanel()  {
+            cityPanel.classList.add('open');
+            pill.classList.add('active');
+        }
+        function closePanel() {
+            cityPanel.classList.remove('open');
+            pill.classList.remove('active');
+            pill.classList.remove('drawing');
+        }
+
+        pill.addEventListener('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            if (cityPanel.classList.contains('open')) {
+                closePanel();
+            } else {
+                setStep(0);
+                openPanel();
+            }
+        });
+
+        // Close on outside click — but never during draw steps
+        document.addEventListener('click', (e) => {
+            if (step === 1 || step === 2) return;
+            if (!cityPanel.contains(e.target) && e.target !== pill) {
+                if (!pill.classList.contains('drawing')) closePanel();
+            }
+        });
 
         function handleCitySearch() {
             const query = document.getElementById('city-search-input').value.trim();
             if (!query) return;
-
-            showMapLoader("Searching...");
-
+            showMapLoader("Searching…");
             searchCity(query)
                 .then(({ lat, lng, name }) => {
                     hideMapLoader();
+                    openPanel();   // ensure panel is open before switching sub-panel
                     setStep('search', { lat, lng, name });
                 })
                 .catch(err => {
-                    console.error("Error:", err);
                     hideMapLoader();
                     showMapLoader("City not found. Try again.", "error");
                 });
         }
 
+        function showRoadNetwork() {
+            // After rasterization edgeLayer is null — use networkRasterOverlay instead
+            if (map.hasLayer(osmLayer)) map.removeLayer(osmLayer);
+            if (networkRasterOverlay && !map.hasLayer(networkRasterOverlay)) map.addLayer(networkRasterOverlay);
+            if (window.attractorLayer && !map.hasLayer(window.attractorLayer)) map.addLayer(window.attractorLayer);
+        }
+
         function setStep(s, opts = {}) {
             step = s;
 
+            // Reset sub-panels
+            const subRadius = document.getElementById('cp-sub-radius');
+            const subDraw   = document.getElementById('cp-sub-draw');
+            const subMain   = document.getElementById('cp-sub-main');
+            if (subMain)   subMain.style.display   = 'flex';
+            if (subRadius) subRadius.style.display = 'none';
+            if (subDraw)   subDraw.style.display   = 'none';
+            pill.classList.remove('drawing');
+
             if (s === 0) {
-                btn.innerHTML = `
-                    <div class="btn-text" style="width:100%">
-                        <div class="btn-title" style="margin-bottom:8px;">🗺️ Load a new city</div>
-                        <div style="display:flex; gap:6px; margin-bottom:8px;">
-                            <input id="city-search-input" type="text" placeholder="Search a city..."
-                                style="flex:1; padding:6px 8px; border:1px solid #ccc;
-                                border-radius:6px; font-size:12px; outline:none;"/>
-                            <button id="city-search-btn" style="
-                                padding:6px 10px; background:#0b4bd6; color:white;
-                                border:none; border-radius:6px; cursor:pointer; font-size:13px;">
-                                🔍
-                            </button>
-                        </div>
-                        <div style="text-align:center; font-size:11px; color:#aaa; margin-bottom:6px;">or</div>
-                        <button id="btn-draw-area" style="
-                            width:100%; padding:6px; background:#f0f0f0; color:#333;
-                            border:1px solid #ddd; border-radius:6px; cursor:pointer;
-                            font-size:12px;">
-                            ✏️ Draw a custom area
-                        </button>
-                    </div>`;
-                btn.classList.remove('drawing');
-
-                document.getElementById('city-search-btn').addEventListener('click', (e) => {
-                    L.DomEvent.stopPropagation(e);
-                    handleCitySearch();
-                });
-                document.getElementById('city-search-input').addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') handleCitySearch();
-                });
-                L.DomEvent.disableClickPropagation(document.getElementById('city-search-input'));
-
-                document.getElementById('btn-draw-area').addEventListener('click', (e) => {
-                    L.DomEvent.stopPropagation(e);
-                    setStep(1);
-                });
-
-                document.querySelector('.info-box').style.top = '280px';
-
+                // default — main search UI visible
             } else if (s === 1) {
+                // Draw area — show instructions
                 resetRoute();
-                btn.innerHTML = `
-                    <div class="btn-text" style="width:100%">
-                        <div class="btn-title" style="margin-bottom:8px;">🗺️ Load a new city</div>
-                        <hr style="margin:0 0 8px 0; border:none; border-top:1px solid #eee;">
-                        <div style="font-size:11px; color:#555; margin-bottom:10px;">
-                            1. Navigate to your city using the map<br>
-                            2. Click <b>Start drawing</b> to select the area
-                        </div>
-                        <div style="display:flex; gap:6px;">
-                            <button id="btn-start-draw" style="
-                                flex:1; padding:6px; background:#0b4bd6; color:white;
-                                border:none; border-radius:6px; cursor:pointer;
-                                font-size:12px; font-weight:bold;">
-                                ✏️ Start drawing
-                            </button>
-                            <button id="btn-cancel" style="
-                                padding:6px 10px; background:#f0f0f0; color:#333;
-                                border:none; border-radius:6px; cursor:pointer;
-                                font-size:12px;">
-                                ✕
-                            </button>
-                        </div>
-                    </div>`;
-                btn.classList.remove('drawing');
-
+                if (subMain)  subMain.style.display  = 'none';
+                if (subDraw)  subDraw.style.display  = 'flex';
                 if (!map.hasLayer(osmLayer)) {
-                    if (map.hasLayer(edgeLayer)) {
-                        previousBaseLayer = edgeLayer;
-                        map.removeLayer(edgeLayer);
-                    }
+                    if (networkRasterOverlay) map.removeLayer(networkRasterOverlay);
+                    if (window.attractorLayer) map.removeLayer(window.attractorLayer);
                     map.addLayer(osmLayer);
                 }
-
-                document.getElementById('btn-start-draw').addEventListener('click', (e) => {
-                    L.DomEvent.stopPropagation(e);
-                    setStep(2);
-                });
-                document.getElementById('btn-cancel').addEventListener('click', (e) => {
-                    L.DomEvent.stopPropagation(e);
-                    if (map.hasLayer(osmLayer) && previousBaseLayer) {
-                        map.removeLayer(osmLayer);
-                        map.addLayer(previousBaseLayer);
-                    }
-                    setStep(0);
-                });
-
             } else if (s === 2) {
+                // Active drawing
                 map.off('click', handleMapClick);
-                btn.innerHTML = `
-                    <div class="btn-icon">✏️</div>
-                    <div class="btn-text">
-                        <div class="btn-title">Draw the area</div>
-                        <div class="btn-subtitle">Click and drag on the map</div>
-                    </div>`;
-                btn.classList.add('drawing');
+                closePanel();
+                pill.classList.add('drawing');
+                pill.querySelector('.pill-label').textContent = 'Drawing…';
                 drawButton.click();
-
             } else if (s === 'search') {
                 const { lat, lng, name } = opts;
                 let radius = 15;
 
                 resetRoute();
+
+                // Switch to OSM so user can see the city location
                 if (!map.hasLayer(osmLayer)) {
-                    if (map.hasLayer(edgeLayer)) {
-                        previousBaseLayer = edgeLayer;
-                        map.removeLayer(edgeLayer);
-                    }
+                    if (networkRasterOverlay) map.removeLayer(networkRasterOverlay);
+                    if (window.attractorLayer) map.removeLayer(window.attractorLayer);
                     map.addLayer(osmLayer);
                 }
-
                 map.setView([lat, lng], 11);
 
-                let centerMarker = L.marker([lat, lng], {
+                // Clean up previous markers
+                if (centerMarker) { map.removeLayer(centerMarker); centerMarker = null; }
+                if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+
+                centerMarker = L.marker([lat, lng], {
                     draggable: true,
                     icon: L.divIcon({
                         className: '',
                         html: `<div style="
-                            width: 14px; height: 14px;
-                            background: #333; border-radius: 50%;
-                            border: 2px solid white;
-                            box-shadow: 0 0 5px rgba(0,0,0,0.5);
-                            cursor: grab;">
+                            width:12px; height:12px;
+                            background:#2563eb; border-radius:50%;
+                            border:2px solid white;
+                            box-shadow:0 0 5px rgba(0,0,0,.4);
+                            cursor:grab;">
                         </div>`,
-                        iconSize: [14, 14],
-                        iconAnchor: [7, 7]
+                        iconSize: [12, 12], iconAnchor: [6, 6]
                     })
                 }).addTo(map);
 
-                centerMarker.on('drag', function(e) {
-                    const pos = e.target.getLatLng();
-                    radiusCircle.setLatLng(pos);
-                });
-
-                let radiusCircle = L.circle([lat, lng], {
+                radiusCircle = L.circle([lat, lng], {
                     radius: radius * 1000,
-                    color: '#0b4bd6', fillColor: '#0b4bd6',
-                    fillOpacity: 0.1, weight: 2
+                    color: '#2563eb', fillColor: '#2563eb',
+                    fillOpacity: 0.07, weight: 1.5
                 }).addTo(map);
 
-                btn.innerHTML = `
-                    <div class="btn-text" style="width:100%">
-                        <div class="btn-title" style="margin-bottom:6px;">📍 ${name}</div>
-                        <hr style="margin:0 0 8px 0; border:none; border-top:1px solid #eee;">
-                        <label style="font-size:11px; color:#555;">
-                            Radius: <b><span id="radius-value">${radius}</span> km</b>
-                        </label>
-                        <input type="range" id="radius-slider" min="1" max="30" step="1" value="${radius}"
-                            style="width:100%; margin: 4px 0 10px 0;">
-                        <div style="display:flex; gap:6px;">
-                            <button id="btn-download-radius" style="
-                                flex:1; padding:6px; background:#0b4bd6; color:white;
-                                border:none; border-radius:6px; cursor:pointer;
-                                font-size:12px; font-weight:bold;">
-                                ⬇️ Download
-                            </button>
-                            <button id="btn-cancel-search" style="
-                                padding:6px 10px; background:#f0f0f0; color:#333;
-                                border:none; border-radius:6px; cursor:pointer;
-                                font-size:12px;">✕
-                            </button>
-                        </div>
-                    </div>`;
-
-                document.getElementById('radius-slider').addEventListener('input', (e) => {
-                    radius = parseInt(e.target.value);
-                    document.getElementById('radius-value').textContent = radius;
-                    radiusCircle.setRadius(radius * 1000);
+                centerMarker.on('drag', (e) => {
+                    radiusCircle.setLatLng(e.target.getLatLng());
                 });
 
-                document.getElementById('btn-download-radius').addEventListener('click', (e) => {
+                // Show radius sub-panel
+                if (subMain)   subMain.style.display   = 'none';
+                if (subRadius) {
+                    subRadius.style.display = 'flex';
+                    document.getElementById('cp-city-name').textContent = '📍 ' + name;
+                    document.getElementById('cp-radius-val').textContent = radius;
+                    document.getElementById('cp-radius-slider').value = radius;
+                }
+
+                document.getElementById('cp-radius-slider').oninput = (e) => {
+                    radius = parseInt(e.target.value);
+                    document.getElementById('cp-radius-val').textContent = radius;
+                    radiusCircle.setRadius(radius * 1000);
+                };
+
+                document.getElementById('cp-btn-download').onclick = (e) => {
                     L.DomEvent.stopPropagation(e);
                     const pos = centerMarker.getLatLng();
-                    map.removeLayer(centerMarker);
-                    map.removeLayer(radiusCircle);
+                    map.removeLayer(centerMarker); centerMarker = null;
+                    map.removeLayer(radiusCircle); radiusCircle = null;
                     currentCity = name;
+                    closePanel();
+                    pill.querySelector('.pill-label').textContent = 'Load city';
                     showMapLoader("Downloading road network…");
                     downloadRoadNetworkByRadius(pos.lat, pos.lng, radius)
                         .then(geojsonData => {
@@ -504,55 +555,78 @@ function addDrawControl() {
                             selectedNodes = [];
                             highlightNodes();
                             hideMapLoader();
-                            setStep(0);
                         })
                         .catch(error => {
                             hideMapLoader();
                             showMapLoader("Download failed. Try a smaller area.", "error");
                             console.error(error);
                         });
-                });
+                };
 
-                document.getElementById('btn-cancel-search').addEventListener('click', (e) => {
+                document.getElementById('cp-btn-cancel-search').onclick = (e) => {
                     L.DomEvent.stopPropagation(e);
-                    map.removeLayer(centerMarker);
-                    map.removeLayer(radiusCircle);
-                    if (map.hasLayer(osmLayer) && previousBaseLayer) {
-                        map.removeLayer(osmLayer);
-                        map.addLayer(previousBaseLayer);
-                    }
+                    if (centerMarker) { map.removeLayer(centerMarker); centerMarker = null; }
+                    if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+                    // Restore road network view
+                    if (map.hasLayer(osmLayer)) map.removeLayer(osmLayer);
+                    showRoadNetwork();
                     setStep(0);
-                });
+                };
             }
         }
 
-        btn.addEventListener('click', (e) => {
+        // Wire up main panel buttons (they exist in HTML)
+        document.getElementById('city-search-btn').addEventListener('click', (e) => {
             L.DomEvent.stopPropagation(e);
+            handleCitySearch();
+        });
+        document.getElementById('city-search-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleCitySearch();
+        });
+        L.DomEvent.disableClickPropagation(document.getElementById('city-search-input'));
+
+        document.getElementById('btn-draw-area').addEventListener('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            setStep(1);
         });
 
-        map.on('draw:created', () => {
-            map.on('click', handleMapClick);
-            setStep(0);
+        // Sub-panel: draw
+        document.getElementById('cp-btn-start-draw').addEventListener('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            setStep(2);
         });
+        document.getElementById('cp-btn-cancel-draw').addEventListener('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            if (map.hasLayer(osmLayer) && previousBaseLayer) {
+                map.removeLayer(osmLayer);
+                map.addLayer(previousBaseLayer);
+            }
+            setStep(0);
+            openPanel();
+        });
+
+        map.on('draw:created', () => { map.on('click', handleMapClick); setStep(0); closePanel(); });
         map.on('draw:drawstop', () => {
             map.on('click', handleMapClick);
-            if (step === 2) setStep(0);
+            if (step === 2) { setStep(0); pill.querySelector('.pill-label').textContent = 'Load city'; }
         });
 
         setStep(0);
+
     }, 500);
 
     map.on('draw:created', function(e) {
         drawnItems.addLayer(e.layer);
-
         if (previousBaseLayer) {
             map.removeLayer(osmLayer);
             map.addLayer(previousBaseLayer);
             previousBaseLayer = null;
         }
-
         handleAreaSelection(e);
         drawnItems.clearLayers();
+        // Reset pill label
+        const pill = document.getElementById('load-city-pill');
+        if (pill) pill.querySelector('.pill-label').textContent = 'Load city';
     });
 }
 
