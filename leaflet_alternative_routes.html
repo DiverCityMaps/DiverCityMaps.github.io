@@ -24,95 +24,192 @@
     <script src="./assets/js/divercity.js"></script>
 </head>
 <body>
-    <div id="app-container">
-        <div id="map"></div>
-        <div id="right-sidebar">
-            <!-- Layer Toggle -->
-            <div class="sidebar-section" id="layer-section">
-                <div class="sidebar-section-title">Map Style</div>
-                <div class="layer-toggle" id="layer-toggle">
-                    <label class="layer-option active" id="layer-roads">
-                        <input type="radio" name="layer" value="roads" checked>
-                        <span>Road Network</span>
-                    </label>
-                    <label class="layer-option" id="layer-osm">
-                        <input type="radio" name="layer" value="osm">
-                        <span>Street Map</span>
-                    </label>
-                </div>
+
+    <!-- Full-screen map -->
+    <div id="map"></div>
+
+    <!-- ── LEFT: floating pill ── -->
+    <div id="load-city-pill" role="button" aria-label="Load a new city">
+        <span class="pill-icon">🗺️</span>
+        <span class="pill-label">Load city</span>
+        <span class="pill-chevron">▾</span>
+    </div>
+
+    <!-- ── LEFT: city dropdown panel ── -->
+    <div id="city-panel">
+
+        <!-- Main: search + draw -->
+        <div id="cp-sub-main" style="display:flex; flex-direction:column; gap:10px;">
+            <div class="cp-title">Load a new city</div>
+            <div class="cp-search-row">
+                <input id="city-search-input" type="text"
+                       placeholder="Search a city…" autocomplete="off"/>
+                <button id="city-search-btn">🔍</button>
             </div>
+            <div class="cp-or">or</div>
+            <button class="cp-draw-btn" id="btn-draw-area">✏️ Draw a custom area</button>
+        </div>
 
-            <!-- Route Settings -->
-            <div class="sidebar-section" id="settings-section">
-                <div class="sidebar-section-title sidebar-collapsible" id="settings-toggle">
-                    ⚙️ Route Settings <span class="sidebar-chevron">▾</span>
-                </div>
-                <div id="settings-content">
-                    <div class="slider-group">
-                        <label class="tooltip slider-label" for="slider-k">
-                            k: <span id="value-k">5</span>
-                            <span class="tooltiptext">Number of alternative routes to compute</span>
-                        </label>
-                        <input type="range" id="slider-k" min="1" max="10" step="1" value="5">
-                    </div>
-                    <div class="slider-group">
-                        <label class="tooltip slider-label" for="slider-p">
-                            p: <span id="value-p">0.1</span>
-                            <span class="tooltiptext">Penalty factor for the Path Penalization algorithm</span>
-                        </label>
-                        <input type="range" id="slider-p" min="0" max="1" step="0.01" value="0.1">
-                    </div>
-                    <div class="slider-group">
-                        <label class="tooltip slider-label" for="slider-eps">
-                            ε (epsilon): <span id="value-eps">0.3</span>
-                            <span class="tooltiptext">Cost threshold for near-shortest routes</span>
-                        </label>
-                        <input type="range" id="slider-eps" min="0" max="1" step="0.01" value="0.3">
-                    </div>
-                    <div class="slider-group">
-                        <label class="tooltip slider-label" for="slider-max-it">
-                            Max Iterations: <span id="value-max-it">25</span>
-                            <span class="tooltiptext">Maximum pathfinding iterations</span>
-                        </label>
-                        <input type="range" id="slider-max-it" min="10" max="300" step="10" value="25">
-                    </div>
-                    <div class="sidebar-divider"></div>
-                    <div class="slider-group">
-                        <label class="tooltip slider-label" for="slider-attractor-reduction">
-                            Attractor speed: <span id="value-attractor-reduction">100%</span>
-                            <span id="attractor-badge"></span>
-                            <span class="tooltiptext">Modify speed on motorways and trunk roads</span>
-                        </label>
-                        <input type="range" id="slider-attractor-reduction" min="0.1" max="2.0" step="0.1" value="1.0">
-                    </div>
-                </div>
+        <!-- Sub: draw instructions -->
+        <div id="cp-sub-draw" class="cp-sub" style="display:none;">
+            <div class="cp-title">Draw area</div>
+            <div class="cp-hint">
+                1. Navigate to your city<br>
+                2. Click <b>Start drawing</b> and drag a rectangle
             </div>
-
-            <!-- Legend -->
-            <div class="sidebar-section" id="legend-section">
-                <div class="sidebar-section-title">Legend</div>
-                <div class="legend-item">
-                    <span class="legend-line" style="background: darkblue;"></span>
-                    <span>NSR (Near Shortest Route)</span>
-                </div>
-                <div class="legend-item">
-                    <span class="legend-line" style="background: #e83030;"></span>
-                    <span>Non-NSR</span>
-                </div>
-                <div class="legend-item">
-                    <span class="legend-line" id="legend-attractor-color" style="background: #F0C060;"></span>
-                    <span>Attractor Road</span>
-                </div>
-            </div>
-
-            <!-- Spacer -->
-            <div style="flex: 1;"></div>
-
-            <!-- About -->
-            <div class="sidebar-section sidebar-about">
-                <span id="about-btn-sidebar">About the measure ℹ️</span>
+            <div class="cp-actions">
+                <button class="cp-btn-primary" id="cp-btn-start-draw">✏️ Start drawing</button>
+                <button class="cp-btn-ghost"   id="cp-btn-cancel-draw">✕</button>
             </div>
         </div>
+
+        <!-- Sub: radius confirm (shown after city search) -->
+        <div id="cp-sub-radius" class="cp-sub" style="display:none;">
+            <div class="cp-city-found" id="cp-city-name"></div>
+            <div class="cp-radius-label">
+                Radius: <b><span id="cp-radius-val">15</span> km</b>
+            </div>
+            <input type="range" id="cp-radius-slider" min="1" max="30" step="1" value="15">
+            <div class="cp-actions">
+                <button class="cp-btn-primary" id="cp-btn-download">⬇️ Download</button>
+                <button class="cp-btn-ghost"   id="cp-btn-cancel-search">✕</button>
+            </div>
+        </div>
+
     </div>
+
+    <!-- ── RIGHT: sidebar ── -->
+    <div id="right-panel">
+        <div id="right-panel-inner">
+
+            <!-- Route Info (injected by ui.js) -->
+            <div id="info-box-anchor"></div>
+
+            <div class="rp-divider"></div>
+
+            <!-- Route Settings (collapsed by default) -->
+            <div class="rp-toggle" id="settings-toggle">
+                <div class="rp-toggle-left">
+                    <span class="rp-toggle-label">⚙️ Route Settings</span>
+                    <span class="rp-settings-summary" id="settings-summary">5 routes · 30% detour</span>
+                </div>
+                <span class="rp-chevron" id="settings-chevron">▾</span>
+            </div>
+            <div id="settings-content">
+                <div class="slider-group">
+                    <div class="slider-row">
+                        <span class="slider-label tooltip">Routes
+                            <span class="tooltiptext">Number of alternative routes to generate (k)</span>
+                        </span>
+                        <span class="slider-value" id="value-k">5</span>
+                    </div>
+                    <input type="range" id="slider-k" min="1" max="10" step="1" value="5">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-row">
+                        <span class="slider-label tooltip">Max detour
+                            <span class="tooltiptext">Maximum travel time increase over the fastest route (ε)</span>
+                        </span>
+                        <span class="slider-value" id="value-eps">30%</span>
+                    </div>
+                    <input type="range" id="slider-eps" min="0" max="1" step="0.01" value="0.3">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-row">
+                        <span class="slider-label tooltip">Penalty
+                            <span class="tooltiptext">Penalization factor for the path penalization algorithm (p)</span>
+                        </span>
+                        <span class="slider-value" id="value-p">0.1</span>
+                    </div>
+                    <input type="range" id="slider-p" min="0" max="1" step="0.01" value="0.1">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-row">
+                        <span class="slider-label tooltip">Attractor speed
+                            <span class="tooltiptext">Modify speed on motorways and trunk roads.</span>
+                        </span>
+                        <span class="slider-value">
+                            <span id="value-attractor-reduction">100%</span>
+                            <span id="attractor-badge"></span>
+                        </span>
+                    </div>
+                    <input type="range" id="slider-attractor-reduction"
+                           min="0.1" max="2.0" step="0.1" value="1.0">
+                </div>
+                <div class="rp-advanced-toggle" id="advanced-toggle">Advanced ▾</div>
+                <div id="advanced-content" style="display:none; margin-top:10px;">
+                    <div class="slider-group">
+                        <div class="slider-row">
+                            <span class="slider-label tooltip">Max iterations
+                                <span class="tooltiptext">Maximum number of pathfinding iterations</span>
+                            </span>
+                            <span class="slider-value" id="value-max-it">25</span>
+                        </div>
+                        <input type="range" id="slider-max-it" min="10" max="300" step="10" value="25">
+                    </div>
+                </div>
+            </div>
+
+            <div class="rp-divider"></div>
+
+            <!-- Layer toggle — at bottom -->
+            <div class="layer-toggle-row">
+                <label class="layer-opt active" id="layer-opt-roads">
+                    <input type="radio" name="layer" value="roads" checked>
+                    <span>Road Network</span>
+                </label>
+                <label class="layer-opt" id="layer-opt-osm">
+                    <input type="radio" name="layer" value="osm">
+                    <span>Street Map</span>
+                </label>
+            </div>
+
+        </div>
+    </div>
+    <!-- ── ZOOM CONTROLS — bottom right of map, left of panel ── -->
+    <div id="zoom-controls">
+        <button id="zoom-in"  title="Zoom in">+</button>
+        <button id="zoom-out" title="Zoom out">−</button>
+    </div>
+
+    <script>
+        // Wire custom zoom buttons once map is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            // Small delay to ensure map is initialised by divercity.js
+            setTimeout(function() {
+                if (typeof map !== 'undefined') {
+                    document.getElementById('zoom-in').addEventListener('click', function() {
+                        map.zoomIn();
+                    });
+                    document.getElementById('zoom-out').addEventListener('click', function() {
+                        map.zoomOut();
+                    });
+                    // Hide Leaflet's built-in zoom control
+                    var zoomCtrl = document.querySelector('.leaflet-control-zoom');
+                    if (zoomCtrl) zoomCtrl.style.display = 'none';
+                }
+            }, 600);
+        });
+    </script>
+
+    <!-- ── BOTTOM LEFT: legend + about ── -->
+    <div id="bottom-left-box">
+        <div class="bl-legend-title">Legend</div>
+        <div class="legend-item">
+            <span class="legend-line" style="background:#1e3a8a;"></span>
+            <span>Near-shortest route</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-line" style="background:#ef4444;"></span>
+            <span>Non-near-shortest</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-line" style="background:#f0b842;"></span>
+            <span>Attractor road</span>
+        </div>
+        <div class="bl-divider"></div>
+        <div class="bl-about-btn" id="about-trigger">About the measure ℹ️</div>
+    </div>
+
 </body>
 </html>
