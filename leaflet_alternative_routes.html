@@ -37,20 +37,15 @@
 
     <!-- ── LEFT: city dropdown panel ── -->
     <div id="city-panel">
-
-        <!-- Main: search + draw -->
         <div id="cp-sub-main" style="display:flex; flex-direction:column; gap:10px;">
             <div class="cp-title">Load a new city</div>
             <div class="cp-search-row">
-                <input id="city-search-input" type="text"
-                       placeholder="Search a city…" autocomplete="off"/>
+                <input id="city-search-input" type="text" placeholder="Search a city…" autocomplete="off"/>
                 <button id="city-search-btn">🔍</button>
             </div>
             <div class="cp-or">or</div>
             <button class="cp-draw-btn" id="btn-draw-area">✏️ Draw a custom area</button>
         </div>
-
-        <!-- Sub: draw instructions -->
         <div id="cp-sub-draw" class="cp-sub" style="display:none;">
             <div class="cp-title">Draw area</div>
             <div class="cp-hint">
@@ -62,32 +57,22 @@
                 <button class="cp-btn-ghost"   id="cp-btn-cancel-draw">✕</button>
             </div>
         </div>
-
-        <!-- Sub: radius confirm (shown after city search) -->
         <div id="cp-sub-radius" class="cp-sub" style="display:none;">
             <div class="cp-city-found" id="cp-city-name"></div>
-            <div class="cp-radius-label">
-                Radius: <b><span id="cp-radius-val">15</span> km</b>
-            </div>
+            <div class="cp-radius-label">Radius: <b><span id="cp-radius-val">15</span> km</b></div>
             <input type="range" id="cp-radius-slider" min="1" max="30" step="1" value="15">
             <div class="cp-actions">
                 <button class="cp-btn-primary" id="cp-btn-download">⬇️ Download</button>
                 <button class="cp-btn-ghost"   id="cp-btn-cancel-search">✕</button>
             </div>
         </div>
-
     </div>
 
     <!-- ── RIGHT: sidebar ── -->
     <div id="right-panel">
         <div id="right-panel-inner">
-
-            <!-- Route Info (injected by ui.js) -->
             <div id="info-box-anchor"></div>
-
             <div class="rp-divider"></div>
-
-            <!-- Route Settings (collapsed by default) -->
             <div class="rp-toggle" id="settings-toggle">
                 <div class="rp-toggle-left">
                     <span class="rp-toggle-label">⚙️ Route Settings</span>
@@ -98,61 +83,47 @@
             <div id="settings-content">
                 <div class="slider-group">
                     <div class="slider-row">
-                        <span class="slider-label tooltip">Routes
-                            <span class="tooltiptext">Number of alternative routes to generate (k)</span>
-                        </span>
+                        <span class="slider-label tooltip">Routes<span class="tooltiptext">Number of alternative routes to generate (k)</span></span>
                         <span class="slider-value" id="value-k">5</span>
                     </div>
                     <input type="range" id="slider-k" min="1" max="10" step="1" value="5">
                 </div>
                 <div class="slider-group">
                     <div class="slider-row">
-                        <span class="slider-label tooltip">Max detour
-                            <span class="tooltiptext">Maximum travel time increase over the fastest route (ε)</span>
-                        </span>
+                        <span class="slider-label tooltip">Max detour<span class="tooltiptext">Maximum travel time increase over the fastest route (ε)</span></span>
                         <span class="slider-value" id="value-eps">30%</span>
                     </div>
                     <input type="range" id="slider-eps" min="0" max="1" step="0.01" value="0.3">
                 </div>
                 <div class="slider-group">
                     <div class="slider-row">
-                        <span class="slider-label tooltip">Penalty
-                            <span class="tooltiptext">Penalization factor for the path penalization algorithm (p)</span>
-                        </span>
+                        <span class="slider-label tooltip">Penalty<span class="tooltiptext">Penalization factor for the path penalization algorithm (p)</span></span>
                         <span class="slider-value" id="value-p">0.1</span>
                     </div>
                     <input type="range" id="slider-p" min="0" max="1" step="0.01" value="0.1">
                 </div>
                 <div class="slider-group">
                     <div class="slider-row">
-                        <span class="slider-label tooltip">Attractor speed
-                            <span class="tooltiptext">Modify speed on motorways and trunk roads.</span>
-                        </span>
+                        <span class="slider-label tooltip">Attractor speed<span class="tooltiptext">Modify speed on motorways and trunk roads.</span></span>
                         <span class="slider-value">
                             <span id="value-attractor-reduction">100%</span>
                             <span id="attractor-badge"></span>
                         </span>
                     </div>
-                    <input type="range" id="slider-attractor-reduction"
-                           min="0.1" max="2.0" step="0.1" value="1.0">
+                    <input type="range" id="slider-attractor-reduction" min="0.1" max="2.0" step="0.1" value="1.0">
                 </div>
                 <div class="rp-advanced-toggle" id="advanced-toggle">Advanced ▾</div>
                 <div id="advanced-content" style="display:none; margin-top:10px;">
                     <div class="slider-group">
                         <div class="slider-row">
-                            <span class="slider-label tooltip">Max iterations
-                                <span class="tooltiptext">Maximum number of pathfinding iterations</span>
-                            </span>
+                            <span class="slider-label tooltip">Max iterations<span class="tooltiptext">Maximum number of pathfinding iterations</span></span>
                             <span class="slider-value" id="value-max-it">25</span>
                         </div>
                         <input type="range" id="slider-max-it" min="10" max="300" step="10" value="25">
                     </div>
                 </div>
             </div>
-
             <div class="rp-divider"></div>
-
-            <!-- Layer toggle — at bottom -->
             <div class="layer-toggle-row">
                 <label class="layer-opt active" id="layer-opt-roads">
                     <input type="radio" name="layer" value="roads" checked>
@@ -163,28 +134,21 @@
                     <span>Street Map</span>
                 </label>
             </div>
-
         </div>
     </div>
-    <!-- ── ZOOM CONTROLS — bottom right of map, left of panel ── -->
+
+    <!-- ── ZOOM CONTROLS ── -->
     <div id="zoom-controls">
-        <button id="zoom-in"  title="Zoom in">+</button>
+        <button id="zoom-in" title="Zoom in">+</button>
         <button id="zoom-out" title="Zoom out">−</button>
     </div>
 
     <script>
-        // Wire custom zoom buttons once map is ready
         document.addEventListener('DOMContentLoaded', function() {
-            // Small delay to ensure map is initialised by divercity.js
             setTimeout(function() {
                 if (typeof map !== 'undefined') {
-                    document.getElementById('zoom-in').addEventListener('click', function() {
-                        map.zoomIn();
-                    });
-                    document.getElementById('zoom-out').addEventListener('click', function() {
-                        map.zoomOut();
-                    });
-                    // Hide Leaflet's built-in zoom control
+                    document.getElementById('zoom-in').addEventListener('click', function() { map.zoomIn(); });
+                    document.getElementById('zoom-out').addEventListener('click', function() { map.zoomOut(); });
                     var zoomCtrl = document.querySelector('.leaflet-control-zoom');
                     if (zoomCtrl) zoomCtrl.style.display = 'none';
                 }

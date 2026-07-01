@@ -345,22 +345,22 @@ function showMapLoader(message, type = "info") {
         loader.id = 'map-loader';
         loader.innerHTML = `
             <div class="spinner"></div>
-            <div id="map-loader-msg" style="margin-top:16px; font-size:14px; font-weight:600; color:#374151;"></div>
+            <div id="map-loader-msg" style="font-size:13px; font-weight:600; color:#374151; font-family:system-ui;"></div>
         `;
         document.body.appendChild(loader);
     }
     const msgEl   = document.getElementById('map-loader-msg');
     const spinner = loader.querySelector('.spinner');
-    msgEl.textContent = message;
     loader.style.display = 'flex';
 
     if (type === "error") {
         if (spinner) spinner.style.display = 'none';
+        msgEl.textContent = message;
         msgEl.style.color = '#dc2626';
         setTimeout(hideMapLoader, 4000);
     } else {
         if (spinner) spinner.style.display = '';
-        msgEl.style.color = '#374151';
+        msgEl.textContent = '';  // no text, just spinner
     }
 }
 

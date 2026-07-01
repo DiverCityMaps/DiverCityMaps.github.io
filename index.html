@@ -1,56 +1,214 @@
 <!DOCTYPE HTML>
-<!--
-	Stellar by HTML5 UP
-	html5up.net | @ajlkn
-	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
--->
-<html>
+<html lang="en">
 <head>
-	<title>DiverCity</title>
-	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-	<link rel="stylesheet" href="assets/css/main.css"/>
-	<link rel="stylesheet" href="assets/css/spinner.css"/>
-	<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
+    <title>DiverCity</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link rel="stylesheet" href="assets/css/main.css"/>
+	<link rel="stylesheet" href="assets/css/nav.css"/>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: #f7f8fa;
+            color: #111827;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Main ── */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 24px 60px;
+            gap: 0;
+        }
+
+        /* ── Header ── */
+        .lp-header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .lp-name {
+            font-size: 52px;
+            font-weight: 800;
+            letter-spacing: -.03em;
+            color: #111827;
+            line-height: 1;
+            margin-bottom: 14px;
+        }
+
+        .lp-name span {
+            color: #2563eb;
+        }
+
+        .lp-subtitle {
+            font-size: 16px;
+            color: #4b5563;
+            font-weight: 400;
+            max-width: 480px;
+            line-height: 1.6;
+            margin: 0 auto 20px;
+        }
+
+        .lp-links {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .lp-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 6px 14px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 100px;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #374151;
+            text-decoration: none;
+            transition: border-color .15s, background .15s;
+        }
+        .lp-link:hover {
+            border-color: #2563eb;
+            background: #eff4ff;
+            color: #2563eb;
+        }
+
+        /* ── Cards ── */
+        .lp-cards {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 720px;
+        }
+
+        .lp-card {
+            flex: 1;
+            min-width: 280px;
+            max-width: 340px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 28px 26px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            text-decoration: none;
+            color: inherit;
+            transition: border-color .15s, box-shadow .15s, transform .15s;
+        }
+        .lp-card:hover {
+            border-color: #2563eb;
+            box-shadow: 0 8px 32px rgba(37,99,235,.10);
+            transform: translateY(-2px);
+        }
+
+        .lp-card-icon {
+            font-size: 28px;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+
+        .lp-card-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: #111827;
+            letter-spacing: -.01em;
+        }
+
+        .lp-card-desc {
+            font-size: 13.5px;
+            color: #6b7280;
+            line-height: 1.6;
+            flex: 1;
+        }
+
+        .lp-card-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #2563eb;
+            margin-top: 6px;
+        }
+        .lp-card:hover .lp-card-btn { text-decoration: underline; }
+
+        /* ── Footer ── */
+        footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 11.5px;
+            color: #9ca3af;
+        }
+        footer a { color: #9ca3af; text-decoration: underline; }
+    </style>
 </head>
 <body>
 
-	<!-- Wrapper -->
-	
+    <nav id="nav">
+        <ul>
+            <li><a href="index.html" class="active">DiverCity</a></li>
+            <li><a href="alternative_routes.html">Route Calculator</a></li>
+            <li><a href="atlas.html">City Atlas</a></li>
+        </ul>
+    </nav>
 
-	<!-- Nav -->
-	<nav id="nav" style="z-index: 99999;">
-		<ul>
-			<li><a href="index.html" class="active">DiverCity Atlas</a></li>
-			<li><a href="alternative_routes.html">Alternative Routes</a></li>
-		</nav>
+    <main>
+        <div class="lp-header">
+            <div class="lp-name">Diver<span>City</span></div>
+            <p class="lp-subtitle">
+                A structural measure of potential route diversification
+                in urban road networks.
+            </p>
+            <div class="lp-links">
+                <a href="https://arxiv.org/abs/2510.02582" target="_blank" class="lp-link">📄 Paper (pre-print)</a>
+                <a href="https://github.com/GiulianoCornacchia/DiverCity" target="_blank" class="lp-link">💻 GitHub</a>
+            </div>
+        </div>
 
+        <div class="lp-cards">
+            <a href="alternative_routes.html" class="lp-card">
+                <div class="lp-card-icon">🔀</div>
+                <div class="lp-card-title">Route Calculator</div>
+                <p class="lp-card-desc">
+                    Compute the Potential Route Diversification score
+                    for any origin-destination pair in any city worldwide.
+                </p>
+                <span class="lp-card-btn">Open Calculator →</span>
+            </a>
+            <a href="atlas.html" class="lp-card">
+                <div class="lp-card-icon">🗺️</div>
+                <div class="lp-card-title">City Atlas</div>
+                <p class="lp-card-desc">
+                    Explore how PRD varies spatially across
+                    56 road networks worldwide from the paper.
+                </p>
+                <span class="lp-card-btn">Open Atlas →</span>
+            </a>
+        </div>
+    </main>
 
-		<!-- Loading overlay -->
-		<div id="loader" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-		background-color: rgba(255, 255, 255, 0.8); display: flex; justify-content: center; align-items: center; z-index: 9999;">
-		<div class="spinner"></div>
-	</div>
+    <footer>
+        Built by <a href="https://linkedin.com/in/giuliano-cornacchia/" target="_blank">Giuliano Cornacchia</a>
+        &nbsp;·&nbsp; ISTI-CNR, Pisa
+    </footer>
 
-	<!-- Main -->
-	<div id="main">
-		<iframe 
-		src="atlas_map.htm" 
-		style="width: 100%; height:calc(100vh - 60px - 1em); max-height: 100vh; border: 0;" 
-		onload="document.getElementById('loader').style.display = 'none';">
-		Your browser does not support iframes.
-	</iframe>
-</div>
-
-
-<!-- Scripts -->
-<script src="assets/js/jquery.min.js"></script>
-<script src="assets/js/jquery.scrollex.min.js"></script>
-<script src="assets/js/jquery.scrolly.min.js"></script>
-<script src="assets/js/browser.min.js"></script>
-<script src="assets/js/breakpoints.min.js"></script>
-<script src="assets/js/util.js"></script>
-<script src="assets/js/main.js"></script>
-
+    <script src="assets/js/jquery.min.js"></script>
+    <script src="assets/js/main.js"></script>
 </body>
 </html>

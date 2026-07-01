@@ -160,7 +160,10 @@ function initializeLayers() {
 
     // Rasterize after next frame so Leaflet has computed bounds
     const bounds = edgeLayer.getBounds();
-    requestAnimationFrame(() => rasterizeNetworkToOverlay(RoadsData, bounds));
+    requestAnimationFrame(() => {
+        rasterizeNetworkToOverlay(RoadsData, bounds);
+        map.fitBounds(bounds);
+    });
 }
 
 function initializeGraphNetwork(RoadsData) {

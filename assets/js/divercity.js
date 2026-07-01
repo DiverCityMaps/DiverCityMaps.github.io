@@ -14,7 +14,7 @@ let attractorSpeedMultiplier = 1.0;
 let isComputing = false;
 let overlayLayers = {};
 let previousBaseLayer = null;
-let currentCity = "Rome, Italy"; // default city name
+let currentCity = "Rome, Italy";
 
 document.addEventListener('DOMContentLoaded', function() {
     if (!map) initializeMap();
@@ -44,7 +44,7 @@ function initializeMap() {
     initializeLayers();
     initializeControls();
     initializeEventListeners();
-    map.fitBounds(edgeLayer.getBounds());
+    map.fitBounds(edgeLayer ? edgeLayer.getBounds() : [[41, 12], [42, 13]]);
 
     map.createPane('routes');
     map.getPane('routes').style.zIndex = 650;
@@ -98,7 +98,6 @@ function computeAndDrawPaths() {
 
     const { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
 
-    // Fastest route travel time in minutes
     const fastestTimeMin = pathCosts.length > 0
         ? Math.round(Math.min(...pathCosts) / 60)
         : undefined;
