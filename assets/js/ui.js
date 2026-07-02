@@ -65,7 +65,10 @@ function createInfoBox() {
         infoBox.innerHTML = `
             <div class="dc-panel-header">
                 <span class="dc-panel-title">Route Info</span>
-                <span id="reset-btn" class="dc-reset-btn">↺ Reset</span>
+                <span style="display:flex; gap:2px; align-items:center;">
+                    <span id="share-btn" class="dc-share-btn">🔗 Share</span>
+                    <span id="reset-btn" class="dc-reset-btn">↺ Reset</span>
+                </span>
             </div>
             ${cityDisplay}
             <div class="dc-prd-block">
@@ -121,6 +124,12 @@ function createInfoBox() {
 
         document.getElementById("reset-btn").addEventListener("click", () => resetRoute());
 
+        document.getElementById("share-btn").addEventListener("click", () => {
+            const url = buildShareURL();
+            if (!url) return;
+            copyTextToClipboard(url).then(() => showToast('🔗 Link copied!'));
+        });
+
         document.getElementById("whatdoes-btn").addEventListener("click", () => {
             const overlay = document.getElementById('about-overlay');
             if (overlay) overlay.style.display = 'flex';
@@ -128,6 +137,107 @@ function createInfoBox() {
     };
 
     updateInfoBoxDefault();
+}
+
+
+// ── URL sharing ─────────────────────────────────────────────
+
+// Returns the top-level location (parent when in iframe, same-origin)
+function getAppLocation() {
+    try {
+        if (window.parent !== window) return window.parent.location;
+    } catch (e) { /* cross-origin — fall through */ }
+    return window.location;
+}
+
+function buildShareURL() {
+    if (selectedNodes.length !== 2) return null;
+
+    const params = new URLSearchParams();
+
+    // Network descriptor
+    if (networkSource.type === 'radius') {
+        params.set('c', `${networkSource.lat.toFixed(5)},${networkSource.lng.toFixed(5)}`);
+        params.set('r', networkSource.r);
+        if (networkSource.name) params.set('name', networkSource.name);
+    } else if (networkSource.type === 'bbox') {
+        params.set('bbox', networkSource.bbox.join(','));
+    } else {
+        params.set('net', 'default');
+    }
+
+    // Origin / destination (node coordinates — re-snapped on load)
+    const o = nodes[selectedNodes[0]];
+    const d = nodes[selectedNodes[1]];
+    params.set('o', `${o[1].toFixed(5)},${o[0].toFixed(5)}`);
+    params.set('d', `${d[1].toFixed(5)},${d[0].toFixed(5)}`);
+
+    // Computation parameters — always included for scientific reproducibility
+    // (results must replicate even if site defaults change in the future)
+    params.set('k',   k);
+    params.set('eps', epsilon.toFixed(2));
+    params.set('p',   p.toFixed(2));
+    params.set('as',  attractorSpeedMultiplier.toFixed(1));
+    params.set('mi',  max_it);
+    if (max_it !== 25)                      params.set('mi', max_it);
+
+    const loc = getAppLocation();
+    let path = loc.pathname;
+    // Extensionless URLs work on GitHub Pages and similar hosts,
+    // but not on local dev servers — strip .html only in production
+    const isLocal = /^(localhost|127\.|192\.168\.|0\.0\.0\.0)/.test(loc.hostname);
+    if (!isLocal) path = path.replace(/\.html$/, '');
+    return loc.origin + path + '#' + params.toString();
+}
+
+// Keep the address bar in sync with the current computed route.
+// replaceState: no history pollution, back button unaffected.
+function updateURLHash() {
+    const url = buildShareURL();
+    if (!url) return;
+    const hash = url.split('#')[1];
+    try {
+        const w = (window.parent !== window) ? window.parent : window;
+        w.history.replaceState(null, '', '#' + hash);
+    } catch (e) { /* cross-origin — skip */ }
+}
+
+function clearURLHash() {
+    try {
+        const w = (window.parent !== window) ? window.parent : window;
+        w.history.replaceState(null, '', w.location.pathname + w.location.search);
+    } catch (e) { /* cross-origin — skip */ }
+}
+
+function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    }
+    return Promise.resolve(fallbackCopy(text));
+}
+
+function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+}
+
+function showToast(msg) {
+    let toast = document.getElementById('dc-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'dc-toast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => toast.classList.remove('show'), 2000);
 }
 
 
@@ -274,6 +384,7 @@ function addAboutPanel() {
             <p><b>|NSR|</b> — number of <i>near-shortest routes</i>: paths whose travel time is within <b>ε%</b> of the fastest route, generated via path penalization with factor <b>p</b>.</p>
             <p><b>S(NSR)</b> — spatial spread: <span style="font-family:monospace">1 − J(NSR)</span>, where J is the average weighted Jaccard similarity among route pairs.</p>
             <p>D(u,v) ranges in <b>[0, k]</b>. Values close to k indicate high diversification.</p>
+            <p style="font-size:11px; color:#9ca3af;">Shared links re-download current OpenStreetMap data; results may vary slightly as the map evolves.</p>
             <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
                 <a href="https://arxiv.org/abs/2510.02582" target="_blank" class="about-link">📄 Paper (pre-print)</a>
                 <a href="https://github.com/GiulianoCornacchia/DiverCity" target="_blank" class="about-link">💻 Code</a>
