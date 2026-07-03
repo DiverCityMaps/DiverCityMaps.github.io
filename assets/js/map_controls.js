@@ -63,8 +63,7 @@ let networkRasterBounds  = null;
 
 function rasterizeNetworkToOverlay(roadsData, bounds) {
 
-    const CANVAS_SIZE = 4096;
-    const PADDING     = 0.04;
+    const PADDING = 0.04;
 
     const south = bounds.getSouth(), north = bounds.getNorth();
     const west  = bounds.getWest(),  east  = bounds.getEast();
@@ -78,27 +77,54 @@ function rasterizeNetworkToOverlay(roadsData, bounds) {
 
     networkRasterBounds = bounds;
 
+    // ── Adaptive resolution ─────────────────────────────────
+    // Pixel density scales with the physical size of the area,
+    // under a fixed total-pixel budget (memory-safe), and the
+    // canvas keeps the real aspect ratio so line widths are uniform.
+    const latSpanKm = (rasterBounds.getNorth() - rasterBounds.getSouth()) * 111;
+    const midLat    = (rasterBounds.getNorth() + rasterBounds.getSouth()) / 2;
+    const lngSpanKm = (rasterBounds.getEast() - rasterBounds.getWest()) * 111 * Math.cos(midLat * Math.PI / 180);
+
+    const AREA_BUDGET_PX = 22_000_000;   // ~22M px ≈ 90MB RGBA, safe on most devices
+    const pxPerKm = Math.min(180, Math.max(50,
+        Math.sqrt(AREA_BUDGET_PX / Math.max(1, latSpanKm * lngSpanKm))
+    ));
+
+    const canvasW = Math.max(512, Math.round(lngSpanKm * pxPerKm));
+    const canvasH = Math.max(512, Math.round(latSpanKm * pxPerKm));
+
     const canvas = document.createElement('canvas');
-    canvas.width  = CANVAS_SIZE;
-    canvas.height = CANVAS_SIZE;
+    canvas.width  = canvasW;
+    canvas.height = canvasH;
     const ctx = canvas.getContext('2d');
 
     // Transparent background — do NOT fill with any color
-    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.clearRect(0, 0, canvasW, canvasH);
 
     const rW = rasterBounds.getEast()  - rasterBounds.getWest();
-    const rH = rasterBounds.getNorth() - rasterBounds.getSouth();
+
+    // Leaflet stretches an ImageOverlay linearly in Web Mercator space,
+    // so the canvas Y must be Mercator-projected — linear latitude causes
+    // a visible north/south offset in the middle of the image.
+    function latToMercY(lat) {
+        const rad = lat * Math.PI / 180;
+        return Math.log(Math.tan(Math.PI / 4 + rad / 2));
+    }
+    const mercTop    = latToMercY(rasterBounds.getNorth());
+    const mercBottom = latToMercY(rasterBounds.getSouth());
+    const mercSpan   = mercTop - mercBottom;
 
     function toPixel(lat, lng) {
         return [
-            ((lng - rasterBounds.getWest())  / rW) * CANVAS_SIZE,
-            ((rasterBounds.getNorth() - lat) / rH) * CANVAS_SIZE
+            ((lng - rasterBounds.getWest()) / rW) * canvasW,
+            ((mercTop - latToMercY(lat)) / mercSpan) * canvasH
         ];
     }
 
     // Draw ONLY regular roads (not attractors — they stay as vector)
+    // Line width scales with pixel density so on-screen thickness is constant
     ctx.strokeStyle = '#a8a8a8';
-    ctx.lineWidth   = 1.5;
+    ctx.lineWidth   = Math.max(1.2, pxPerKm / 52);
     ctx.lineCap     = 'round';
     ctx.lineJoin    = 'round';
 
@@ -143,6 +169,8 @@ function initializeLayers() {
     graph = bgraph.graph;
     nodes = bgraph.nodes;
 
+    if (typeof syncGraphToWorker === "function") syncGraphToWorker();
+
     // Draw vectors temporarily to get bounds, then rasterize
     edgeLayer = L.geoJSON(RoadsData, {
         pane: 'roads',
@@ -176,6 +204,8 @@ function initializeGraphNetwork(RoadsData) {
     if (typeof cleanGraph === "function") {
         graph = cleanGraph(graph, nodes);
     }
+
+    if (typeof syncGraphToWorker === "function") syncGraphToWorker();
 
     if (edgeLayer) map.removeLayer(edgeLayer);
     if (window.attractorLayer) map.removeLayer(window.attractorLayer);
@@ -255,25 +285,12 @@ function highlightNodes() {
         marker.on('dragend', function(e) {
             let closestNode = findClosestNode(e.target.getLatLng());
             selectedNodes[index] = closestNode;
+            highlightNodes();   // snap marker to the actual node position
 
-            if (selectedNodes.length === 2) {
-                let { allPaths, pathCosts } = computeKAlternativePaths(
-                    graph, selectedNodes[0], selectedNodes[1], k, p, max_it
-                );
-                drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
-
-                let edgeWeights = {};
-                RoadsData.features.forEach(feature => {
-                    if (feature.geometry.type === "LineString") {
-                        let edge = [feature.properties.start, feature.properties.end];
-                        edgeWeights[edge] = feature.properties.length;
-                    }
-                });
-
-                let { diverCity, numNSP, spatialSpread } = computeDiverCity(
-                    allPaths, pathCosts, edgeWeights, epsilon
-                );
-                updateInfoBox(selectedNodes[0], selectedNodes[1], numNSP, spatialSpread, diverCity);
+            if (selectedNodes.length === 2 && !isComputing) {
+                isComputing = true;
+                updateInfoBoxLoading();
+                setTimeout(() => computeAndDrawPaths(), 50);
             }
         });
     });
@@ -354,6 +371,12 @@ function handleAreaSelection(event) {
         +bounds.getNorthEast().lng.toFixed(5)
     ];
 
+    // Reject areas larger than the max the tool supports
+    if (bboxAreaKm2(bbox) > MAX_BBOX_AREA_KM2) {
+        showMapLoader("Area too large. Please draw a smaller rectangle (max ~3,000 km²).", "error");
+        return;
+    }
+
     resetRoute();
     if (edgeLayer) { map.removeLayer(edgeLayer); edgeLayer = null; }
 
@@ -364,6 +387,7 @@ function handleAreaSelection(event) {
         .then(geojsonData => {
             RoadsData = geojsonData;
             initializeGraphNetwork(RoadsData);
+            networkSource = { type: 'bbox', bbox };
             selectedNodes = [];
             highlightNodes();
             hideMapLoader();
@@ -555,6 +579,7 @@ function addDrawControl() {
                         .then(geojsonData => {
                             RoadsData = geojsonData;
                             initializeGraphNetwork(RoadsData);
+                            networkSource = { type: 'radius', lat: pos.lat, lng: pos.lng, r: radius, name };
                             selectedNodes = [];
                             highlightNodes();
                             hideMapLoader();
