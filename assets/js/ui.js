@@ -65,9 +65,21 @@ function createInfoBox() {
         infoBox.innerHTML = `
             <div class="dc-panel-header">
                 <span class="dc-panel-title">Route Info</span>
-                <span style="display:flex; gap:2px; align-items:center;">
-                    <span id="share-btn" class="dc-share-btn">🔗 Share</span>
-                    <span id="reset-btn" class="dc-reset-btn">↺ Reset</span>
+                <span class="dc-header-actions">
+                    <button id="share-btn" class="dc-icon-btn" title="Copy shareable link">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                        </svg>
+                        <span>Share</span>
+                    </button>
+                    <button id="reset-btn" class="dc-icon-btn" title="Clear route">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 12a9 9 0 1 0 3-6.7"/>
+                            <polyline points="3 4 3 10 9 10"/>
+                        </svg>
+                        <span>Reset</span>
+                    </button>
                 </span>
             </div>
             ${cityDisplay}
@@ -124,10 +136,22 @@ function createInfoBox() {
 
         document.getElementById("reset-btn").addEventListener("click", () => resetRoute());
 
-        document.getElementById("share-btn").addEventListener("click", () => {
-            const url = buildShareURL();
-            if (!url) return;
-            copyTextToClipboard(url).then(() => showToast('🔗 Link copied!'));
+        document.getElementById("share-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
+            try {
+                const url = buildShareURL();
+                console.log('[Share] URL:', url);
+                if (!url) { showToast('⚠ Compute a route first'); return; }
+                copyTextToClipboard(url)
+                    .then(() => showToast('🔗 Link copied!'))
+                    .catch(err => {
+                        console.error('[Share] Copy failed:', err);
+                        showToast('⚠ Copy failed — link in console');
+                    });
+            } catch (err) {
+                console.error('[Share] Error building URL:', err);
+                showToast('⚠ Error — check console');
+            }
         });
 
         document.getElementById("whatdoes-btn").addEventListener("click", () => {
@@ -141,14 +165,7 @@ function createInfoBox() {
 
 
 // ── URL sharing ─────────────────────────────────────────────
-
-// Returns the top-level location (parent when in iframe, same-origin)
-function getAppLocation() {
-    try {
-        if (window.parent !== window) return window.parent.location;
-    } catch (e) { /* cross-origin — fall through */ }
-    return window.location;
-}
+// (getAppLocation is defined in divercity.js)
 
 function buildShareURL() {
     if (selectedNodes.length !== 2) return null;
