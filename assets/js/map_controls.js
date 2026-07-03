@@ -236,24 +236,97 @@ function initializeGraphNetwork(RoadsData) {
     updateLayerControl();
 }
 
-function findClosestNode(latlng) {
+// ── Spatial index for fast nearest-node lookup (KD-tree) ────
+// Built once per network load. Query O(log n) vs O(n) linear scan.
+// Coordinates are stored in equirectangular projection:
+//   x = lng · cos(mean latitude),  y = lat
+// so Euclidean distance in index space is proportional to metres.
+let nodeSpatialIndex = null;
+let indexedNodeIds   = [];
+let lngScale         = 1;   // cos(φ̄) — set when index is built
+
+function buildNodeSpatialIndex() {
+    nodeSpatialIndex = null;
+    indexedNodeIds   = [];
+    lngScale         = 1;
+
+    if (typeof KDBush === 'undefined') {
+        console.warn('[DiverCity] kdbush not loaded — falling back to linear nearest-node search');
+        return;
+    }
+
+    // ALL nodes — a destination does not need outgoing edges
+    const coords = [];
+    let latSum = 0;
+    for (const nodeId in nodes) {
+        const c = nodes[nodeId];
+        if (!c) continue;
+        indexedNodeIds.push(nodeId);
+        coords.push(c);
+        latSum += c[1];
+    }
+
+    if (indexedNodeIds.length === 0) return;
+
+    // Equirectangular correction: 1° lng shrinks by cos(lat)
+    const meanLat = latSum / indexedNodeIds.length;
+    lngScale = Math.cos(meanLat * Math.PI / 180);
+
+    const index = new KDBush(indexedNodeIds.length);
+    for (const c of coords) {
+        index.add(c[0] * lngScale, c[1]);   // x = lng·cos(φ̄), y = lat
+    }
+    index.finish();
+    nodeSpatialIndex = index;
+
+    console.log(`[DiverCity] Spatial index built: ${indexedNodeIds.length} nodes, lngScale=${lngScale.toFixed(4)}`);
+}
+
+function findClosestNodeLinear(latlng) {
     let minDist = Infinity;
     let closestNode = null;
-
     for (let nodeId in nodes) {
-        if (!graph.hasOwnProperty(nodeId)) continue;
-        let nodeCoords = nodes[nodeId];
-        if (!nodeCoords) continue;
-        let dist = Math.sqrt(
-            Math.pow(nodeCoords[1] - latlng.lat, 2) +
-            Math.pow(nodeCoords[0] - latlng.lng, 2)
-        );
+        let c = nodes[nodeId];
+        if (!c) continue;
+        const dx = (c[0] - latlng.lng) * lngScale;
+        const dy =  c[1] - latlng.lat;
+        const dist = dx * dx + dy * dy;   // squared — no sqrt needed for comparison
         if (dist < minDist) {
             minDist = dist;
             closestNode = nodeId;
         }
     }
     return closestNode;
+}
+
+function findClosestNode(latlng) {
+    if (!nodeSpatialIndex) return findClosestNodeLinear(latlng);
+
+    const qx = latlng.lng * lngScale;
+    const qy = latlng.lat;
+
+    // Expanding-radius search: start ~200m (0.002° ≈ 222m), grow 4x per attempt
+    let radius = 0.002;
+    for (let attempt = 0; attempt < 8; attempt++) {
+        const candidates = nodeSpatialIndex.within(qx, qy, radius);
+        if (candidates.length > 0) {
+            let best = null, bestDist = Infinity;
+            for (const idx of candidates) {
+                const c = nodes[indexedNodeIds[idx]];
+                const dx = c[0] * lngScale - qx;
+                const dy = c[1] - qy;
+                const dist = dx * dx + dy * dy;
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = indexedNodeIds[idx];
+                }
+            }
+            return best;
+        }
+        radius *= 4;
+    }
+    // Nothing found in expanding search — fall back
+    return findClosestNodeLinear(latlng);
 }
 
 function highlightNodes() {
