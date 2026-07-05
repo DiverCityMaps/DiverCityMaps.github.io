@@ -287,10 +287,19 @@ function initializeMap() {
         preferCanvas: true
     });
 
-    initializeLayers();
+    // Controls first — so showMapLoader is guaranteed to work
     initializeControls();
     initializeEventListeners();
-    map.fitBounds(edgeLayer ? edgeLayer.getBounds() : [[41, 12], [42, 13]]);
+
+    // Show spinner immediately, then build the network in the next frame
+    // so the browser can paint the UI+spinner before we block for buildGraph.
+    showMapLoader("Building road network…");
+
+    requestAnimationFrame(function () {
+        initializeLayers();
+        map.fitBounds(edgeLayer ? edgeLayer.getBounds() : [[41, 12], [42, 13]]);
+        hideMapLoader();
+    });
 
     map.createPane('routes');
     map.getPane('routes').style.zIndex = 650;

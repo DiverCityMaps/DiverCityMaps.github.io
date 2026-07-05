@@ -27,10 +27,29 @@
 
 	<!-- Main -->
 	<div id="main" style="overflow: hidden;">
-		<iframe src="leaflet_alternative_routes.html" style="width: 100%; height:calc(100vh - 60px - 1em); max-height: 100vh; border: 0;" onload="document.getElementById('loader').style.display = 'none';">
+		<iframe id="app-frame" src="leaflet_alternative_routes.html" style="width: 100%; height:calc(100vh - 60px - 1em); max-height: 100vh; border: 0;">
 			Your browser does not support iframes.
 		</iframe>
 	</div>
+
+	<script>
+		// Hide loader as soon as iframe UI is mounted (before rome.js and
+		// graph build), so users see the calculator interface instead of grey.
+		(function () {
+			var loader = document.getElementById('loader');
+			var frame  = document.getElementById('app-frame');
+			var hidden = false;
+			function hide() {
+				if (hidden) return;
+				hidden = true;
+				if (loader) loader.style.display = 'none';
+			}
+			window.addEventListener('message', function (e) {
+				if (e.data === 'ui-ready') hide();
+			});
+			if (frame) frame.addEventListener('load', hide);   // fallback
+		})();
+	</script>
 
 	<script src="assets/js/jquery.min.js"></script>
 	<script src="assets/js/jquery.scrollex.min.js"></script>

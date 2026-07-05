@@ -9,21 +9,28 @@
     <link rel="stylesheet" href="./assets/css/css_trip_planner.css"/>
     <link rel="stylesheet" href="./assets/css/spinner.css"/>
 
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@2.2.11/osmtogeojson.min.js"></script>
+    <script defer src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/osmtogeojson@2.2.11/osmtogeojson.min.js"></script>
 
-    <script type="text/javascript" src="./assets/js/heap.js"></script>
-    <script src="./data/road_networks/rome.js"></script>
-    <script src="./assets/js/utils.js"></script>
-    <script src="./assets/js/graph.js"></script>
-    <script src="./assets/js/osm.js"></script>
-    <script src="./assets/js/routing.js"></script>
-    <script src="./assets/js/ui.js"></script>
-    <script src="./assets/js/map_controls.js"></script>
-    <script src="./assets/js/divercity.js"></script>
+    <script defer src="./assets/js/heap.js"></script>
+    <script defer src="./data/road_networks/rome.js"></script>
+    <script defer src="./assets/js/utils.js"></script>
+    <script defer src="./assets/js/graph.js"></script>
+    <script defer src="./assets/js/osm.js"></script>
+    <script defer src="./assets/js/routing.js"></script>
+    <script defer src="./assets/js/ui.js"></script>
+    <script defer src="./assets/js/map_controls.js"></script>
+    <script defer src="./assets/js/divercity.js"></script>
 </head>
 <body>
+    <!-- Notify wrapper page that our UI shell is being rendered.
+         Runs BEFORE any deferred script (including rome.js 30MB). -->
+    <script>
+        if (window.parent && window.parent !== window) {
+            try { window.parent.postMessage('ui-ready', '*'); } catch (e) {}
+        }
+    </script>
 
     <!-- Full-screen map -->
     <div id="map"></div>
@@ -143,19 +150,6 @@
         <button id="zoom-out" title="Zoom out">−</button>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(function() {
-                if (typeof map !== 'undefined') {
-                    document.getElementById('zoom-in').addEventListener('click', function() { map.zoomIn(); });
-                    document.getElementById('zoom-out').addEventListener('click', function() { map.zoomOut(); });
-                    var zoomCtrl = document.querySelector('.leaflet-control-zoom');
-                    if (zoomCtrl) zoomCtrl.style.display = 'none';
-                }
-            }, 600);
-        });
-    </script>
-
     <!-- ── BOTTOM LEFT: legend + about ── -->
     <div id="bottom-left-box">
         <div class="bl-legend-title">Legend</div>
@@ -174,6 +168,20 @@
         <div class="bl-divider"></div>
         <div class="bl-about-btn" id="about-trigger">About the measure ℹ️</div>
     </div>
+
+    <!-- Custom zoom control wiring (defer runs after map init) -->
+    <script defer>
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (typeof map !== 'undefined') {
+                    document.getElementById('zoom-in').addEventListener('click', function() { map.zoomIn(); });
+                    document.getElementById('zoom-out').addEventListener('click', function() { map.zoomOut(); });
+                    var zoomCtrl = document.querySelector('.leaflet-control-zoom');
+                    if (zoomCtrl) zoomCtrl.style.display = 'none';
+                }
+            }, 600);
+        });
+    </script>
 
 </body>
 </html>
