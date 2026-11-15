@@ -38,6 +38,8 @@ function parseMaxSpeed(maxspeed) {
         : numericSpeed;
 }
 
+// Geometry simplification only (drawing). Tolerance is in degrees: 0.00005 is
+// about 5 m. It does not touch lengths or travel times, computed before it.
 function simplifyCoords(coords, tolerance = 0.00005) {
     if (coords.length <= 2) return coords;
     const result = [coords[0]];

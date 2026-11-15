@@ -163,15 +163,22 @@ function rasterizeNetworkToOverlay(roadsData, bounds) {
     }
 }
 
+// Single entry point to (re)build the routing graph from RoadsData.
+// Main-component cleanup is done upstream (transformOSMDataToRoadsData).
+function rebuildRoutingGraph(roadsData) {
+    const built = buildGraph(roadsData);
+    graph = built.graph;
+    nodes = built.nodes;
+    edges = built.edges;
+    edgeLength = built.edgeLength;
+
+    buildNodeSpatialIndex();
+    if (typeof syncGraphToWorker === "function") syncGraphToWorker();
+}
+
 function initializeLayers() {
     ensureCustomPanes(map);
-    let bgraph = buildGraph(RoadsData);
-    graph = bgraph.graph;
-    nodes = bgraph.nodes;
-    edges = bgraph.edges;
-    edgeLength = bgraph.edgeLength;
-
-    if (typeof syncGraphToWorker === "function") syncGraphToWorker();
+    rebuildRoutingGraph(RoadsData);
 
     // Draw vectors temporarily to get bounds, then rasterize
     edgeLayer = L.geoJSON(RoadsData, {
@@ -199,17 +206,7 @@ function initializeLayers() {
 function initializeGraphNetwork(RoadsData) {
     ensureCustomPanes(map);
 
-    let updatedGraph = buildGraph(RoadsData);
-    graph = updatedGraph.graph;
-    nodes = updatedGraph.nodes;
-    edges = updatedGraph.edges;
-    edgeLength = updatedGraph.edgeLength;
-
-    if (typeof cleanGraph === "function") {
-        graph = cleanGraph(graph, nodes);
-    }
-
-    if (typeof syncGraphToWorker === "function") syncGraphToWorker();
+    rebuildRoutingGraph(RoadsData);
 
     if (edgeLayer) map.removeLayer(edgeLayer);
     if (window.attractorLayer) map.removeLayer(window.attractorLayer);
