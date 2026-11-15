@@ -4,45 +4,44 @@
 // Depends on: utils.js (haversineDistance, parseMaxSpeed, simplifyCoords, debugNetworkSize)
 // ==========================
 
+// Builds the routing graph. Every directed edge gets a unique integer id, so
+// parallel edges (same start/end) are distinguishable everywhere downstream.
+//   graph[u] = [{ n: neighborId (string), w: travel_time, a: is_attractor, id }]
+//   edges[id] = { start, end, length, geometry }
+//   edgeLength[id] = length in meters (weights for the weighted Jaccard)
 function buildGraph(roadsData) {
-    let graph = {}, nodes = {};
+    const graph = {}, nodes = {}, edges = [];
 
     roadsData.features.forEach(feature => {
         if (feature.geometry.type === "LineString") {
-            let start = feature.properties.start;
-            let end = feature.properties.end;
+            const start = String(feature.properties.start);
+            const end   = String(feature.properties.end);
+            const id = edges.length;
+
+            edges.push({
+                start, end,
+                length: feature.properties.length,
+                geometry: feature.geometry.coordinates
+            });
 
             if (!graph[start]) graph[start] = [];
             graph[start].push({
-                node: end,
-                weight: feature.properties.travel_time,
-                is_attractor: feature.properties.is_attractor,
-                geometry: feature.geometry.coordinates,
-                feature
+                n: end,
+                w: feature.properties.travel_time,
+                a: feature.properties.is_attractor,
+                id
             });
         } else if (feature.geometry.type === "Point") {
             nodes[feature.properties.id] = feature.geometry.coordinates;
         }
     });
 
+    const edgeLength = new Float64Array(edges.length);
+    edges.forEach((e, id) => { edgeLength[id] = e.length; });
+
     debugNetworkSize(roadsData, nodes);
 
-    return { graph, nodes };
-}
-
-
-function deepCopyGraph(graph, attractorSpeedMultiplier = 1.0) {
-    const copy = {};
-    for (let node in graph) {
-        copy[node] = graph[node].map(link => {
-            let weight = link.weight;
-            if (link.is_attractor === 1) {
-                weight = weight / attractorSpeedMultiplier;
-            }
-            return { node: link.node, weight, is_attractor: link.is_attractor, feature: link.feature };
-        });
-    }
-    return copy;
+    return { graph, nodes, edges, edgeLength };
 }
 
 

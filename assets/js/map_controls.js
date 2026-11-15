@@ -168,6 +168,8 @@ function initializeLayers() {
     let bgraph = buildGraph(RoadsData);
     graph = bgraph.graph;
     nodes = bgraph.nodes;
+    edges = bgraph.edges;
+    edgeLength = bgraph.edgeLength;
 
     if (typeof syncGraphToWorker === "function") syncGraphToWorker();
 
@@ -200,6 +202,8 @@ function initializeGraphNetwork(RoadsData) {
     let updatedGraph = buildGraph(RoadsData);
     graph = updatedGraph.graph;
     nodes = updatedGraph.nodes;
+    edges = updatedGraph.edges;
+    edgeLength = updatedGraph.edgeLength;
 
     if (typeof cleanGraph === "function") {
         graph = cleanGraph(graph, nodes);
@@ -369,7 +373,7 @@ function highlightNodes() {
     });
 }
 
-function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
+function drawPathsNSPAggr(map, edges, allPaths, pathCosts, epsilon) {
     pathLayers.forEach(layer => map.removeLayer(layer));
     pathLayers = [];
 
@@ -381,7 +385,8 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
     let edgeCounts = {};
     pathCategories.forEach(({ paths }) => {
         paths.forEach(pathEdges => {
-            pathEdges.forEach(([start, end]) => {
+            pathEdges.forEach(id => {
+                const { start, end } = edges[id];
                 let key = start < end ? `${start}-${end}` : `${end}-${start}`;
                 edgeCounts[key] = (edgeCounts[key] || 0) + 1;
             });
@@ -393,10 +398,10 @@ function drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon) {
     pathCategories.forEach(({ paths, color }) => {
         let geoJsonFeatures = [];
         paths.forEach(pathEdges => {
-            pathEdges.forEach(([start, end]) => {
+            pathEdges.forEach(id => {
+                const { start, end, geometry: edgeGeometry } = edges[id];
                 let key = start < end ? `${start}-${end}` : `${end}-${start}`;
                 let weight = 1 + (edgeCounts[key] / maxCount) * 8;
-                let edgeGeometry = graph[start]?.find(link => link.node === end)?.geometry;
                 if (edgeGeometry) {
                     geoJsonFeatures.push({
                         type: "Feature",

@@ -6,7 +6,7 @@
 // ==========================
 // Global Variables
 // ==========================
-let map, graph = {}, nodes = {}, edgeLayer, layerControl, osmLayer;
+let map, graph = {}, nodes = {}, edges = [], edgeLength = new Float64Array(0), edgeLayer, layerControl, osmLayer;
 let selectedNodes = [], nodeMarkers = [], pathLayers = [];
 let isRouteComputed = false;
 let k = 5, p = 0.1, epsilon = 0.3, max_it = 25;
@@ -46,33 +46,12 @@ function initRoutingWorker() {
     }
 }
 
-// Lightweight graph for the worker: strips geometries and feature references.
-// Node IDs forced to strings so === comparisons never fail due to
-// string-vs-number mismatches after JSON serialization or mixed dataset sources.
-function buildLightGraph() {
-    const light = {};
-    for (const u in graph) {
-        const key = String(u);
-        light[key] = graph[u].map(l => ({ n: String(l.node), w: l.weight, a: l.is_attractor }));
-    }
-    return light;
-}
-
-// Ensure main-thread graph node IDs are also strings, so drawPathsNSPAggr
-// finds geometries whether paths come from worker (strings) or fallback (numbers).
-function normalizeGraphNodeIds() {
-    for (const u in graph) {
-        for (const link of graph[u]) {
-            if (typeof link.node !== 'string') link.node = String(link.node);
-        }
-    }
-}
-
-// Called after every buildGraph (initial load and new network downloads)
+// Called after every buildGraph (initial load and new network downloads).
+// The graph is already in the light format (string node ids, no geometries),
+// so it is sent to the worker as is.
 function syncGraphToWorker() {
-    normalizeGraphNodeIds();   // main-thread graph must have string node IDs too
     if (!routingWorker) return;
-    routingWorker.postMessage({ type: 'setGraph', graph: buildLightGraph() });
+    routingWorker.postMessage({ type: 'setGraph', graph, edgeCount: edges.length });
 }
 
 function handleWorkerMessage(e) {
@@ -357,22 +336,16 @@ function computeAndDrawPaths() {
     }
 
     // Fallback: synchronous main-thread computation
-    const { allPaths, pathCosts } = computeKAlternativePaths(graph, start, end, k, p, max_it);
+    const { allPaths, pathCosts } = computeKAlternativePaths(
+        graph, edges.length, start, end, k, p, max_it, attractorSpeedMultiplier
+    );
     finishComputation(allPaths, pathCosts);
 }
 
 function finishComputation(allPaths, pathCosts) {
-    drawPathsNSPAggr(map, graph, nodes, allPaths, pathCosts, epsilon);
+    drawPathsNSPAggr(map, edges, allPaths, pathCosts, epsilon);
 
-    const edgeWeights = {};
-    RoadsData.features.forEach(f => {
-        if (f.geometry.type === "LineString") {
-            const e = [f.properties.start, f.properties.end];
-            edgeWeights[e] = f.properties.length;
-        }
-    });
-
-    const { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeWeights, epsilon);
+    const { diverCity, numNSP, spatialSpread } = computeDiverCity(allPaths, pathCosts, edgeLength, epsilon);
 
     const fastestTimeMin = pathCosts.length > 0
         ? Math.round(Math.min(...pathCosts) / 60)
