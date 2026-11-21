@@ -82,15 +82,23 @@ function fetchOverpass(query) {
     return tryNext();
 }
 
+// Converts an Overpass response and records the OSM data timestamp
+// (a GeoJSON "foreign member": ignored by Leaflet, kept in saved files).
+function overpassToRoadsData(osmData) {
+    const fc = transformOSMDataToRoadsData(osmData);
+    fc.osmBaseTimestamp = (osmData.osm3s && osmData.osm3s.timestamp_osm_base) || null;
+    return fc;
+}
+
 function downloadRoadNetwork(bbox) {
     const [s, w, n, e] = bbox.map(v => +v.toFixed(5));
     return fetchOverpass(buildOverpassQuery(`(${s},${w},${n},${e})`))
-        .then(osmData => transformOSMDataToRoadsData(osmData));
+        .then(overpassToRoadsData);
 }
 
 function downloadRoadNetworkByRadius(lat, lng, radiusKm) {
     return fetchOverpass(buildOverpassQuery(`(around:${radiusKm * 1000},${lat},${lng})`))
-        .then(osmData => transformOSMDataToRoadsData(osmData));
+        .then(overpassToRoadsData);
 }
 
 function searchCity(query) {

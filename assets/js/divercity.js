@@ -148,9 +148,7 @@ function applySharedStateFromURL() {
         showMapLoader("Loading shared route…");
         downloadRoadNetworkByRadius(clat, clng, r)
             .then(geojsonData => {
-                RoadsData = geojsonData;
-                initializeGraphNetwork(RoadsData);
-                networkSource = { type: 'radius', lat: clat, lng: clng, r, name: currentCity };
+                loadNetwork(geojsonData, { type: 'radius', lat: clat, lng: clng, r, name: currentCity });
                 hideMapLoader();
                 proceed();
             })
@@ -179,9 +177,7 @@ function applySharedStateFromURL() {
         showMapLoader("Loading shared route…");
         downloadRoadNetwork(bbox)
             .then(geojsonData => {
-                RoadsData = geojsonData;
-                initializeGraphNetwork(RoadsData);
-                networkSource = { type: 'bbox', bbox };
+                loadNetwork(geojsonData, { type: 'bbox', bbox });
                 hideMapLoader();
                 proceed();
             })

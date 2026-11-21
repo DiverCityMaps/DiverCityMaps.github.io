@@ -18,6 +18,7 @@
     <script defer src="./data/road_networks/rome.js"></script>
     <script defer src="./assets/js/utils.js"></script>
     <script defer src="./assets/js/graph.js"></script>
+    <script defer src="./assets/js/network_file.js"></script>
     <script defer src="./assets/js/osm.js"></script>
     <script defer src="./assets/js/routing.js"></script>
     <script defer src="./assets/js/ui.js"></script>
@@ -53,6 +54,10 @@
             </div>
             <div class="cp-or">or</div>
             <button class="cp-draw-btn" id="btn-draw-area">✏️ Draw a custom area</button>
+            <div class="cp-or">network file</div>
+            <button class="cp-draw-btn" id="btn-open-network">📂 Open network file</button>
+            <button class="cp-draw-btn" id="btn-save-network">💾 Save current network</button>
+            <input type="file" id="network-file-input" accept=".json,application/json" style="display:none">
         </div>
         <div id="cp-sub-draw" class="cp-sub" style="display:none;">
             <div class="cp-title">Draw area</div>
