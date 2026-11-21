@@ -1,0 +1,28 @@
+# Claude Code (local only, never tracked)
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.claude.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*~
+
+# Node / Python
+node_modules/
+__pycache__/
+*.pyc
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Road networks saved from the site (generated, can be large)
+divercity_*.json

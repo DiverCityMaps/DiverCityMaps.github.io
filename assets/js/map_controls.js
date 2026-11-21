@@ -176,6 +176,67 @@ function rebuildRoutingGraph(roadsData) {
     if (typeof syncGraphToWorker === "function") syncGraphToWorker();
 }
 
+// Single entry point to install a new network (download, shared link or file).
+// The caller sets currentCity beforehand when it has a name.
+function loadNetwork(roadsData, source) {
+    RoadsData = roadsData;
+    initializeGraphNetwork(RoadsData);
+    networkSource = source;
+    selectedNodes = [];
+    highlightNodes();
+}
+
+// ── Save / open a network file (format and validation: network_file.js) ──
+function saveCurrentNetwork() {
+    if (!RoadsData) { showToast('⚠ No network loaded'); return; }
+    const text = serializeNetwork(RoadsData, networkSource, currentCity);
+    const slug = String(currentCity).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'network';
+    const fileName = `divercity_${slug}_${new Date().toISOString().slice(0, 10)}.json`;
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    showToast('💾 Network saved');
+}
+
+function openNetworkFile(file) {
+    if (!file) return;
+    if (file.size > MAX_NETWORK_FILE_BYTES) {
+        showMapLoader("File too large.", "error");
+        return;
+    }
+    showMapLoader("Opening network…");
+    const reader = new FileReader();
+    reader.onerror = () => showMapLoader("Could not read the file.", "error");
+    reader.onload = () => {
+        // Let the loader paint before the heavy parse
+        setTimeout(() => {
+            let parsed;
+            try { parsed = JSON.parse(reader.result); }
+            catch (e) { showMapLoader("Not a valid JSON file.", "error"); return; }
+
+            const res = validateNetworkFile(parsed);
+            if (!res.ok) { showMapLoader(res.error, "error"); return; }
+
+            resetRoute();
+            const name = sanitizeName(res.meta.name) || sanitizeName(file.name.replace(/\.json$/i, '')) || 'Opened network';
+            currentCity = name;
+            try {
+                loadNetwork(res.roadsData, { type: 'file', name, origin: res.meta.source });
+                hideMapLoader();
+            } catch (e) {
+                console.error(e);
+                showMapLoader("Could not build the network from this file.", "error");
+            }
+        }, 30);
+    };
+    reader.readAsText(file);
+}
+
 function initializeLayers() {
     ensureCustomPanes(map);
     rebuildRoutingGraph(RoadsData);
@@ -460,11 +521,7 @@ function handleAreaSelection(event) {
 
     downloadRoadNetwork(bbox)
         .then(geojsonData => {
-            RoadsData = geojsonData;
-            initializeGraphNetwork(RoadsData);
-            networkSource = { type: 'bbox', bbox };
-            selectedNodes = [];
-            highlightNodes();
+            loadNetwork(geojsonData, { type: 'bbox', bbox });
             hideMapLoader();
         })
         .catch(error => {
@@ -652,11 +709,7 @@ function addDrawControl() {
                     showMapLoader("Downloading road network…");
                     downloadRoadNetworkByRadius(pos.lat, pos.lng, radius)
                         .then(geojsonData => {
-                            RoadsData = geojsonData;
-                            initializeGraphNetwork(RoadsData);
-                            networkSource = { type: 'radius', lat: pos.lat, lng: pos.lng, r: radius, name };
-                            selectedNodes = [];
-                            highlightNodes();
+                            loadNetwork(geojsonData, { type: 'radius', lat: pos.lat, lng: pos.lng, r: radius, name });
                             hideMapLoader();
                         })
                         .catch(error => {
@@ -691,6 +744,23 @@ function addDrawControl() {
         document.getElementById('btn-draw-area').addEventListener('click', (e) => {
             L.DomEvent.stopPropagation(e);
             setStep(1);
+        });
+
+        const fileInput = document.getElementById('network-file-input');
+        document.getElementById('btn-save-network').addEventListener('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            saveCurrentNetwork();
+            closePanel();
+        });
+        document.getElementById('btn-open-network').addEventListener('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            fileInput.value = '';
+            fileInput.click();
+        });
+        fileInput.addEventListener('change', () => {
+            const f = fileInput.files && fileInput.files[0];
+            closePanel();
+            openNetworkFile(f);
         });
 
         // Sub-panel: draw

@@ -139,6 +139,10 @@ function createInfoBox() {
         document.getElementById("share-btn").addEventListener("click", (e) => {
             e.stopPropagation();
             try {
+                if (networkSource.type === 'file') {
+                    showToast('⚠ A network opened from a file cannot be shared by link');
+                    return;
+                }
                 const url = buildShareURL();
                 console.log('[Share] URL:', url);
                 if (!url) { showToast('⚠ Compute a route first'); return; }
@@ -179,8 +183,10 @@ function buildShareURL() {
         if (networkSource.name) params.set('name', networkSource.name);
     } else if (networkSource.type === 'bbox') {
         params.set('bbox', networkSource.bbox.join(','));
-    } else {
+    } else if (networkSource.type === 'default') {
         params.set('net', 'default');
+    } else {
+        return null;   // e.g. network opened from a file: not reproducible from a link
     }
 
     // Origin / destination (node coordinates — re-snapped on load)
