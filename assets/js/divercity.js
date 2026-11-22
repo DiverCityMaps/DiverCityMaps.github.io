@@ -6,7 +6,7 @@
 // ==========================
 // Global Variables
 // ==========================
-let map, graph = {}, nodes = {}, edges = [], edgeLength = new Float64Array(0), edgeLayer, layerControl, osmLayer;
+let map, graph = {}, nodes = {}, edges = [], edgeLength = new Float64Array(0), layerControl, osmLayer;
 let selectedNodes = [], nodeMarkers = [], pathLayers = [];
 let isRouteComputed = false;
 let k = 5, p = 0.1, epsilon = 0.3, max_it = 25;
@@ -147,8 +147,8 @@ function applySharedStateFromURL() {
         if (!currentCity) currentCity = 'Shared area';
         showMapLoader("Loading shared route…");
         downloadRoadNetworkByRadius(clat, clng, r)
-            .then(geojsonData => {
-                loadNetwork(geojsonData, { type: 'radius', lat: clat, lng: clng, r, name: currentCity });
+            .then(geojsonData => loadNetwork(geojsonData, { type: 'radius', lat: clat, lng: clng, r, name: currentCity }))
+            .then(() => {
                 hideMapLoader();
                 proceed();
             })
@@ -176,8 +176,8 @@ function applySharedStateFromURL() {
         currentCity = "Custom area";
         showMapLoader("Loading shared route…");
         downloadRoadNetwork(bbox)
-            .then(geojsonData => {
-                loadNetwork(geojsonData, { type: 'bbox', bbox });
+            .then(geojsonData => loadNetwork(geojsonData, { type: 'bbox', bbox }))
+            .then(() => {
                 hideMapLoader();
                 proceed();
             })
@@ -187,8 +187,8 @@ function applySharedStateFromURL() {
                 console.error(err);
             });
     } else {
-        // Default network (rome.js) — already loaded
-        proceed();
+        // Default network (rome.js): wait until it is installed (graph built)
+        initialNetworkReady.then(proceed);
     }
 }
 
@@ -246,6 +246,8 @@ function applySharedParams(params) {
 // Initialization
 // ==========================
 
+let initialNetworkReady = Promise.resolve();   // set by initializeMap
+
 function initializeMap() {
     osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Road network data © OpenStreetMap contributors, <a href="https://opendatacommons.org/licenses/odbl/" target="_blank">ODbL</a>'
@@ -266,15 +268,14 @@ function initializeMap() {
     initializeControls();
     initializeEventListeners();
 
-    // Show spinner immediately, then build the network in the next frame
-    // so the browser can paint the UI+spinner before we block for buildGraph.
-    showMapLoader("Building road network…");
-
-    requestAnimationFrame(function () {
-        initializeLayers();
-        map.fitBounds(edgeLayer ? edgeLayer.getBounds() : [[41, 12], [42, 13]]);
-        hideMapLoader();
-    });
+    // Install the default network in phases (loader messages, paint between
+    // phases); the loader goes away once the network is on screen.
+    initialNetworkReady = installNetwork(RoadsData)
+        .then(() => hideMapLoader())
+        .catch(err => {
+            console.error(err);
+            showMapLoader("Could not build the road network.", "error");
+        });
 
     map.createPane('routes');
     map.getPane('routes').style.zIndex = 650;
