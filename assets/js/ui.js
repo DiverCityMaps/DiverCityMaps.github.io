@@ -494,7 +494,8 @@ function showMapLoader(message, type = "info") {
         setTimeout(hideMapLoader, 4000);
     } else {
         if (spinner) spinner.style.display = '';
-        msgEl.textContent = '';  // no text, just spinner
+        msgEl.textContent = message;
+        msgEl.style.color = '#374151';
     }
 }
 

@@ -155,12 +155,6 @@ function rasterizeNetworkToOverlay(roadsData, bounds) {
 
     if (networkRasterOverlay) map.removeLayer(networkRasterOverlay);
     networkRasterOverlay = newOverlay;
-
-    // Remove the temporary regular-road vector layer (keep attractorLayer as vector)
-    if (edgeLayer) {
-        map.removeLayer(edgeLayer);
-        edgeLayer = null;
-    }
 }
 
 // Single entry point to (re)build the routing graph from RoadsData.
@@ -177,13 +171,15 @@ function rebuildRoutingGraph(roadsData) {
 }
 
 // Single entry point to install a new network (download, shared link or file).
-// The caller sets currentCity beforehand when it has a name.
+// The caller sets currentCity beforehand when it has a name. Returns a promise
+// that resolves when the network is on screen: callers hide the loader then.
 function loadNetwork(roadsData, source) {
     RoadsData = roadsData;
-    initializeGraphNetwork(RoadsData);
-    networkSource = source;
-    selectedNodes = [];
-    highlightNodes();
+    return installNetwork(roadsData).then(() => {
+        networkSource = source;
+        selectedNodes = [];
+        highlightNodes();
+    });
 }
 
 // ── Save / open a network file (format and validation: network_file.js) ──
@@ -225,77 +221,90 @@ function openNetworkFile(file) {
             resetRoute();
             const name = sanitizeName(res.meta.name) || sanitizeName(file.name.replace(/\.json$/i, '')) || 'Opened network';
             currentCity = name;
-            try {
-                loadNetwork(res.roadsData, { type: 'file', name, origin: res.meta.source });
-                hideMapLoader();
-            } catch (e) {
-                console.error(e);
-                showMapLoader("Could not build the network from this file.", "error");
-            }
+            loadNetwork(res.roadsData, { type: 'file', name, origin: res.meta.source })
+                .then(() => hideMapLoader())
+                .catch(e => {
+                    console.error(e);
+                    showMapLoader("Could not build the network from this file.", "error");
+                });
         }, 30);
     };
     reader.readAsText(file);
 }
 
-function initializeLayers() {
-    ensureCustomPanes(map);
-    rebuildRoutingGraph(RoadsData);
-
-    // Draw vectors temporarily to get bounds, then rasterize
-    edgeLayer = L.geoJSON(RoadsData, {
-        pane: 'roads',
-        style: styleRoads,
-        filter: filterRegularRoad,
-        interactive: false
-    }).addTo(map);
-
-    window.attractorLayer = L.geoJSON(RoadsData, {
-        pane: 'attractors',
-        style: styleRoads,
-        filter: filterAttractor,
-        interactive: false
-    }).addTo(map);
-
-    // Rasterize after next frame so Leaflet has computed bounds
-    const bounds = edgeLayer.getBounds();
-    requestAnimationFrame(() => {
-        rasterizeNetworkToOverlay(RoadsData, bounds);
-        map.fitBounds(bounds);
-    });
+// Bounds of the whole network (regular roads and attractors), from the node
+// points: no need to draw anything to know where the network is.
+function networkBounds(roadsData) {
+    let s = Infinity, w = Infinity, n = -Infinity, e = -Infinity;
+    for (const f of roadsData.features) {
+        if (f.geometry.type !== 'Point') continue;
+        const c = f.geometry.coordinates;
+        if (c[1] < s) s = c[1];
+        if (c[1] > n) n = c[1];
+        if (c[0] < w) w = c[0];
+        if (c[0] > e) e = c[0];
+    }
+    return L.latLngBounds([[s, w], [n, e]]);
 }
 
-function initializeGraphNetwork(RoadsData) {
+// Draws the network: attractors stay vector (restyled by the speed slider),
+// regular roads are rasterized straight to an image overlay.
+function drawNetwork(roadsData) {
     ensureCustomPanes(map);
 
-    rebuildRoutingGraph(RoadsData);
-
-    if (edgeLayer) map.removeLayer(edgeLayer);
     if (window.attractorLayer) map.removeLayer(window.attractorLayer);
     if (map.hasLayer(osmLayer)) map.removeLayer(osmLayer);
 
-    // Draw vectors briefly to compute bounds
-    edgeLayer = L.geoJSON(RoadsData, {
-        pane: 'roads',
-        style: styleRoads,
-        filter: filterRegularRoad,
-        interactive: false
-    }).addTo(map);
-
-    window.attractorLayer = L.geoJSON(RoadsData, {
+    window.attractorLayer = L.geoJSON(roadsData, {
         pane: 'attractors',
         style: styleRoads,
         filter: filterAttractor,
         interactive: false
     }).addTo(map);
 
-    const bounds = edgeLayer.getBounds();
+    const bounds = networkBounds(roadsData);
     map.fitBounds(bounds);
-
-    // Rasterize on next frame
-    requestAnimationFrame(() => rasterizeNetworkToOverlay(RoadsData, bounds));
+    rasterizeNetworkToOverlay(roadsData, bounds);
 
     overlayLayers = {};
     updateLayerControl();
+}
+
+// Resolves after the browser had a chance to paint (so the loader message
+// changes are visible before the next heavy step). The timeout covers hidden
+// tabs, where requestAnimationFrame never fires.
+function yieldToBrowser() {
+    return new Promise(resolve => {
+        let done = false;
+        const go = () => { if (!done) { done = true; resolve(); } };
+        requestAnimationFrame(() => setTimeout(go, 0));
+        setTimeout(go, 100);
+    });
+}
+
+// Installs a network in phases (graph, then drawing), updating the loader
+// message between phases. Installs are serialized: a second call waits for
+// the first, so two networks never interleave.
+let _installChain = Promise.resolve();
+function installNetwork(roadsData) {
+    const run = async () => {
+        showMapLoader("Building routing graph…");
+        await yieldToBrowser();
+        rebuildRoutingGraph(roadsData);
+
+        showMapLoader("Drawing the map…");
+        await yieldToBrowser();
+        drawNetwork(roadsData);
+
+        // Wait for the raster image to be decoded, then for a paint, so the
+        // loader goes away only when the network is actually visible.
+        const img = networkRasterOverlay && networkRasterOverlay.getElement();
+        if (img && img.decode) { try { await img.decode(); } catch (e) { /* ignore */ } }
+        await yieldToBrowser();
+    };
+    const p = _installChain.then(run);
+    _installChain = p.catch(() => {});
+    return p;
 }
 
 // ── Spatial index for fast nearest-node lookup (KD-tree) ────
@@ -514,14 +523,13 @@ function handleAreaSelection(event) {
     }
 
     resetRoute();
-    if (edgeLayer) { map.removeLayer(edgeLayer); edgeLayer = null; }
 
     currentCity = "Custom area";
     showMapLoader("Downloading road network…");
 
     downloadRoadNetwork(bbox)
-        .then(geojsonData => {
-            loadNetwork(geojsonData, { type: 'bbox', bbox });
+        .then(geojsonData => loadNetwork(geojsonData, { type: 'bbox', bbox }))
+        .then(() => {
             hideMapLoader();
         })
         .catch(error => {
@@ -603,7 +611,6 @@ function addDrawControl() {
         }
 
         function showRoadNetwork() {
-            // After rasterization edgeLayer is null — use networkRasterOverlay instead
             if (map.hasLayer(osmLayer)) map.removeLayer(osmLayer);
             if (networkRasterOverlay && !map.hasLayer(networkRasterOverlay)) map.addLayer(networkRasterOverlay);
             if (window.attractorLayer && !map.hasLayer(window.attractorLayer)) map.addLayer(window.attractorLayer);
@@ -708,8 +715,8 @@ function addDrawControl() {
                     pill.querySelector('.pill-label').textContent = 'Load city';
                     showMapLoader("Downloading road network…");
                     downloadRoadNetworkByRadius(pos.lat, pos.lng, radius)
-                        .then(geojsonData => {
-                            loadNetwork(geojsonData, { type: 'radius', lat: pos.lat, lng: pos.lng, r: radius, name });
+                        .then(geojsonData => loadNetwork(geojsonData, { type: 'radius', lat: pos.lat, lng: pos.lng, r: radius, name }))
+                        .then(() => {
                             hideMapLoader();
                         })
                         .catch(error => {
